@@ -3,6 +3,8 @@ import '../theme/app_theme.dart';
 import '../services/assessment_service.dart';
 import 'question_screen.dart';
 import '../screens/aptitude_result_screen.dart';
+import '../screens/ai_recommendations_screen.dart';
+import '../dashboards/roadmap_dashboard.dart'; //
 
 class StudentTestScreen extends StatefulWidget {
   const StudentTestScreen({super.key});
@@ -16,6 +18,8 @@ class _StudentTestScreenState extends State<StudentTestScreen> {
 
   int currentStep = 0;
   bool _isLoadingProgress = true; // ✅ ADDED: The missing variable
+  bool _isGeneratingRoadmap = false;
+  bool _hasActiveRoadmap = false; // ✅ Tracks if roadmap exists in DB
   String? selectedCareer;
   String? studentCurrentClass;
 
@@ -38,15 +42,50 @@ class _StudentTestScreenState extends State<StudentTestScreen> {
     _loadUserProgress();
   }
 
+  // ✅ ADD THIS METHOD to handle the API call
+  Future<void> _handleGenerateRoadmap() async {
+    if (selectedCareer == null) return;
+
+    setState(() => _isGeneratingRoadmap = true);
+
+    try {
+      final roadmap = await _apiService.generateAndSaveRoadmap(selectedCareer!);
+
+      if (!mounted) return;
+      setState(() => _isGeneratingRoadmap = false);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Success! ${roadmap['total_duration']} Roadmap created."),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      // TODO: Navigate to your Roadmap Dashboard here!
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => RoadmapDashboard()));
+
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isGeneratingRoadmap = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: ${e.toString()}"), backgroundColor: Colors.redAccent),
+      );
+    }
+  }
+
   // --- FETCH PROGRESS ON LOAD ---
   Future<void> _loadUserProgress() async {
     try {
+      // 1. Fetch the general assessment progress
       final profile = await _apiService.getUserProfile();
       final progress = profile['progress'] ?? {};
 
+      // 2. ✅ NEW: Check if a roadmap already exists in the database
+      final roadmap = await _apiService.getCurrentRoadmap();
+
       int stepIndex = 0;
 
-      // Cascade check: advance the step if the previous one is done.
+      // Your existing cascade logic
       if (progress['profile_done'] == true || progress['basic_assessment_done'] == true) stepIndex = 1;
       if (stepIndex == 1 && progress['personality_done'] == true) stepIndex = 2;
       if (stepIndex == 2 && progress['passion_done'] == true) stepIndex = 3;
@@ -59,7 +98,14 @@ class _StudentTestScreenState extends State<StudentTestScreen> {
 
       if (mounted) {
         setState(() {
-          currentStep = stepIndex;
+          // 3. ✅ NEW: If a roadmap exists, force the index to the very end (Step 10)
+          if (roadmap != null) {
+            _hasActiveRoadmap = true;
+            selectedCareer = roadmap['title'];
+            currentStep = 10; // This ensures the 10th step gets the green tick
+          } else {
+            currentStep = stepIndex;
+          }
           _isLoadingProgress = false;
         });
       }
@@ -160,8 +206,23 @@ class _StudentTestScreenState extends State<StudentTestScreen> {
 
       if (!mounted) return;
       Navigator.pop(context); // Close loading dialog
+      // ✅ NEW: Navigate to the beautiful full screen instead of the bottom sheet
+      final selectedPath = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => AIRecommendationsScreen(
+            aiData: aiData,
+            apiService: _apiService,
+          ),
+        ),
+      );
 
-      _showCareerSelectionSheet(aiData);
+      // ✅ NEW: If they selected a career and came back, update the button UI
+      if (selectedPath != null && mounted) {
+        setState(() => selectedCareer = selectedPath as String);
+        // Advance currentStep to the last index so the "Generate" button becomes visible
+        setState(() => currentStep = steps.length - 1);
+      }
 
     } catch (e) {
       if (!mounted) return;
@@ -279,8 +340,11 @@ class _StudentTestScreenState extends State<StudentTestScreen> {
     );
   }
 
+  // ✅ REPLACED: Now calls backend and shows a loading spinner
   Widget _buildGenerateButton() {
-    bool isReady = selectedCareer != null;
+    // Ready if career is selected OR if roadmap is already active
+    bool isReady = (selectedCareer != null || _hasActiveRoadmap) && !_isGeneratingRoadmap;
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       width: double.infinity,
@@ -302,20 +366,29 @@ class _StudentTestScreenState extends State<StudentTestScreen> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: isReady
-              ? () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text("Roadmap generation started..."),
-                backgroundColor: AppTheme.student,
-              ),
-            );
-          }
-              : null,
+          onTap: isReady ? () {
+            if (_hasActiveRoadmap) {
+              // ✅ Redirect to roadmap if it already exists
+              Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const RoadmapDashboard()));
+            } else {
+              // ✅ Generate new roadmap
+              _handleGenerateRoadmap();
+            }
+          } : null,
           borderRadius: BorderRadius.circular(22),
           child: Center(
-            child: Text(
-              "GENERATE MY ROADMAP",
+            child: _isGeneratingRoadmap
+                ? const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3)),
+                SizedBox(width: 12),
+                Text("ARCHITECTING PATH...", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14)),
+              ],
+            )
+                : Text(
+              // ✅ Dynamic text change
+              _hasActiveRoadmap ? "CONTINUE YOUR JOURNEY" : "GENERATE MY ROADMAP",
               style: TextStyle(
                 color: isReady ? Colors.white : AppTheme.student.withOpacity(0.5),
                 fontWeight: FontWeight.w900,
@@ -330,8 +403,9 @@ class _StudentTestScreenState extends State<StudentTestScreen> {
   }
 
   Widget _buildModernJourneyStep(int index, String title, String subtitle) {
-    bool isCompleted = index < currentStep;
-    bool isCurrent = index == currentStep;
+
+    bool isCompleted = index < currentStep || (index == 9 && _hasActiveRoadmap);
+    bool isCurrent = index == currentStep && !_hasActiveRoadmap;
     bool isLocked = index > currentStep;
 
     return IntrinsicHeight(
@@ -436,79 +510,6 @@ class _StudentTestScreenState extends State<StudentTestScreen> {
       child: Text(
         title,
         style: const TextStyle(color: Color(0xFF8E99AF), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.5),
-      ),
-    );
-  }
-
-  void _showCareerSelectionSheet(Map<String, dynamic> aiData) {
-    final List<dynamic> options = aiData['top_5_careers'] ?? [];
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        padding: const EdgeInsets.fromLTRB(28, 12, 28, 32),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(35)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
-            const SizedBox(height: 25),
-            const Text("AI Recommended Paths", style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
-            const SizedBox(height: 8),
-            Text(
-              aiData['brutal_truth_summary'] ?? "Select one to finalize your roadmap",
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey[600], fontWeight: FontWeight.w500, fontSize: 13),
-            ),
-            const SizedBox(height: 24),
-            ...options.map((career) => _buildCareerTile(
-                career['title'],
-                career['rationale']
-            )).toList(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCareerTile(String title, String category) {
-    return GestureDetector(
-      onTap: () async {
-        bool success = await _apiService.selectCareer(title);
-        if (success) {
-          setState(() => selectedCareer = title);
-          if (mounted) Navigator.pop(context);
-        }
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF8F9FB),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.grey.shade100),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.auto_awesome, color: AppTheme.student, size: 20),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-                  Text(category, style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.w500)),
-                ],
-              ),
-            ),
-            const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.grey),
-          ],
-        ),
       ),
     );
   }

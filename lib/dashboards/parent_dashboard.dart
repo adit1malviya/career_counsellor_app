@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../profiles/parent_profile.dart';
 import '../screens/parent_report_screen.dart';
+import '../services/assessment_service.dart';
+import '../dashboards/roadmap_dashboard.dart';
 
 class ParentDashboard extends StatefulWidget {
   const ParentDashboard({super.key});
@@ -12,8 +14,19 @@ class ParentDashboard extends StatefulWidget {
 
 class _ParentDashboardState extends State<ParentDashboard> {
   int _currentIndex = 0;
+  final AssessmentService _apiService = AssessmentService();
 
-  // 1. SHARED DATA SOURCE
+  // Dynamic State Variables
+  String _wardName = "Ward";
+  String _wardId = "";
+  double _logicalScore = 0.0;
+  double _quantScore = 0.0;
+  double _verbalScore = 0.0;
+
+  Map<String, dynamic>? _roadmapData;
+  bool _isLoading = true; // ✅ Track global loading state
+
+  // Mock reports - in a real app, fetch these from an API
   final List<Map<String, dynamic>> allReports = [
     {
       "title": "Career Pathing",
@@ -23,19 +36,67 @@ class _ParentDashboardState extends State<ParentDashboard> {
       "mentor": "Dr. Sarah James",
       "avatar": "https://i.pravatar.cc/150?img=32",
       "category": "Technical",
-      "duration": "45 min"
-    },
-    {
-      "title": "Aptitude Review",
-      "subtitle": "Logical Reasoning",
-      "date": "2026-03-22",
-      "displayDate": "22 Mar",
-      "mentor": "Prof. Mike Wheeler",
-      "avatar": "https://i.pravatar.cc/150?img=12",
-      "category": "Aptitude",
-      "duration": "60 min"
     },
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAllData();
+  }
+
+  /// ✅ Orchestrator: Fetches all necessary ward data
+  Future<void> _loadAllData() async {
+    try {
+      final status = await _apiService.getLinkedStudentStatus();
+
+      if (status['is_linked'] == true) {
+        _wardId = status['student']['id'];
+        _wardName = status['student']['full_name'] ?? "Ward";
+
+        // Fetch scores and roadmap in parallel for speed
+        final results = await Future.wait([
+          _apiService.getProfileById(_wardId),
+          _apiService.getWardRoadmap(_wardId),
+        ]);
+
+        final profileData = results[0] as Map<String, dynamic>;
+        final roadmap = results[1] as Map<String, dynamic>?;
+
+        final Map<String, dynamic> apti = profileData['apti_data'] ?? {};
+        final Map<String, dynamic> scores = apti['scores'] ?? {};
+        final double max = (scores['max_score'] ?? 15).toDouble();
+
+        if (mounted) {
+          setState(() {
+            _logicalScore = ((scores['logical'] ?? 0).toDouble()) / max;
+            _quantScore = ((scores['quantitative'] ?? 0).toDouble()) / max;
+            _verbalScore = ((scores['verbal'] ?? 0).toDouble()) / max;
+            _roadmapData = roadmap;
+            _isLoading = false;
+          });
+        }
+      } else {
+        if (mounted) setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      debugPrint("Dashboard Error: $e");
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFEDF1F9),
+      // Using AnimatedSwitcher for smooth tab transitions
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 300),
+        child: _buildBody(),
+      ),
+      bottomNavigationBar: _buildBottomNav(),
+    );
+  }
 
   Widget _buildBody() {
     switch (_currentIndex) {
@@ -47,64 +108,129 @@ class _ParentDashboardState extends State<ParentDashboard> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFEDF1F9),
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 300),
-        child: _buildBody(),
-      ),
-      bottomNavigationBar: _buildBottomNav(),
-    );
-  }
-
   Widget _buildHomeContent() {
-    // 2. LOGIC: PICK ONLY THE SINGLE LATEST REPORT
-    final latestReport = allReports.first;
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator(color: AppTheme.parentTheme));
+    }
+
+    final firstName = _wardName.split(' ')[0];
 
     return SafeArea(
-      child: SingleChildScrollView(
-        key: const PageStorageKey('parentHomeScroll'),
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 20),
-            _buildTopBar(),
-            const SizedBox(height: 24),
-            _buildSummaryCard(),
-            const SizedBox(height: 32),
-            const Text("Alex's Top Strengths",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
-            const SizedBox(height: 16),
-            _buildStrengthRadar(),
-            const SizedBox(height: 32),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text("Latest Session Report", // Updated label
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
-                GestureDetector(
-                  onTap: () => setState(() => _currentIndex = 1),
-                  child: Text("VIEW ALL",
-                      style: TextStyle(fontSize: 12, color: AppTheme.parentTheme.withOpacity(0.6), fontWeight: FontWeight.bold)),
+      child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              // Always use Clamping to prevent that "pulling away from the top" look
+              physics: const ClampingScrollPhysics(),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  // mainAxisSize: MainAxisSize.min is crucial to prevent extra height
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(height: 20),
+                    _buildTopBar(firstName),
+                    const SizedBox(height: 20),
+
+                    GestureDetector(
+                      onTap: () {
+                        if (_wardId.isNotEmpty) {
+                          Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => RoadmapDashboard(studentId: _wardId))
+                          );
+                        }
+                      },
+                      child: _buildRoadmapTrackerCard(firstName),
+                    ),
+
+                    const SizedBox(height: 32),
+                    Text("$firstName's Top Strengths",
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+                    const SizedBox(height: 16),
+                    _buildStrengthRadar(),
+
+                    const SizedBox(height: 32),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text("Latest Session Report",
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+                        GestureDetector(
+                          onTap: () => setState(() => _currentIndex = 1),
+                          child: Text("VIEW ALL",
+                              style: TextStyle(fontSize: 12, color: AppTheme.parentTheme.withOpacity(0.6), fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    _buildPremiumReportCard(allReports.first),
+
+                    // ✅ The "Smart Stopper"
+                    // This ensures the scroll ends right after the card,
+                    // but gives it enough room to clear the nav bar.
+                    // If it's still scrolling too much, reduce 110 to 90.
+                    const SizedBox(height: 55),
+                  ],
                 ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // SHOWING ONLY THE ONE LATEST CARD
-            _buildPremiumReportCard(latestReport),
-
-            const SizedBox(height: 120),
-          ],
-        ),
+              ),
+            );
+          }
       ),
     );
   }
 
-  // --- REUSABLE PREMIUM CARD UI ---
+  Widget _buildRoadmapTrackerCard(String name) {
+    // ✅ Improved Logic: Check if roadmap data exists at all
+    bool hasRoadmap = _roadmapData != null && _roadmapData!.isNotEmpty;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF5141B3), Color(0xFF6554C0)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(
+              color: const Color(0xFF5141B3).withOpacity(0.2),
+              blurRadius: 15,
+              offset: const Offset(0, 8)
+          )
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(hasRoadmap ? "ROADMAP ACTIVE" : "JOURNEY STATUS",
+              style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+          const SizedBox(height: 12),
+          Text(
+            // ✅ Updated Dynamic Text
+            hasRoadmap
+                ? "Track $name's\nRoadmap & Progress"
+                : "$name's journey\nhas not started yet",
+            style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, height: 1.2),
+          ),
+          const SizedBox(height: 16),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: LinearProgressIndicator(
+              // If data exists but progress isn't defined, default to a small visual start (0.1)
+              value: hasRoadmap ? (_roadmapData!['overall_progress']?.toDouble() ?? 0.1) : 0.0,
+              minHeight: 6,
+              backgroundColor: Colors.white.withOpacity(0.2),
+              valueColor: const AlwaysStoppedAnimation(Color(0xFF00FFC2)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildPremiumReportCard(Map<String, dynamic> report) {
     return Container(
       decoration: BoxDecoration(
@@ -136,8 +262,7 @@ class _ParentDashboardState extends State<ParentDashboard> {
                         style: const TextStyle(color: AppTheme.parentTheme, fontSize: 9, fontWeight: FontWeight.w900),
                       ),
                     ),
-                    Text(report['displayDate'],
-                        style: TextStyle(color: Colors.grey.shade500, fontSize: 11, fontWeight: FontWeight.bold)),
+                    Text(report['date'] ?? "28 Mar", style: TextStyle(color: Colors.grey.shade500, fontSize: 11, fontWeight: FontWeight.bold)),
                   ],
                 ),
                 const SizedBox(height: 18),
@@ -147,9 +272,9 @@ class _ParentDashboardState extends State<ParentDashboard> {
                 const SizedBox(height: 20),
                 Row(
                   children: [
-                    CircleAvatar(radius: 16, backgroundImage: NetworkImage(report['avatar'])),
+                    CircleAvatar(radius: 16, backgroundImage: NetworkImage(report['avatar'] ?? 'https://i.pravatar.cc/150')),
                     const SizedBox(width: 12),
-                    Expanded(child: Text(report['mentor'], style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold))),
+                    Expanded(child: Text(report['mentor'] ?? "Mentor", style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold))),
                     const Icon(Icons.verified_rounded, color: Colors.blue, size: 18),
                   ],
                 ),
@@ -162,10 +287,9 @@ class _ParentDashboardState extends State<ParentDashboard> {
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 18),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF0EFFF),
-                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30)),
-                border: Border(top: BorderSide(color: AppTheme.parentTheme.withOpacity(0.1), width: 1.5)),
+              decoration: const BoxDecoration(
+                color: Color(0xFFF0EFFF),
+                borderRadius: BorderRadius.vertical(bottom: Radius.circular(30)),
               ),
               child: const Center(
                 child: Text("VIEW FULL EVALUATION",
@@ -178,15 +302,70 @@ class _ParentDashboardState extends State<ParentDashboard> {
     );
   }
 
-  // --- PERSISTENT BOTTOM NAVIGATION ---
+  Widget _buildTopBar(String name) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("PARENTAL MONITORING", style: TextStyle(color: Colors.grey, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1)),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                const CircleAvatar(radius: 18, backgroundImage: NetworkImage('https://i.pravatar.cc/150?img=11')),
+                const SizedBox(width: 10),
+                Text("$name's Progress", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                const Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.parentTheme),
+              ],
+            ),
+          ],
+        ),
+        _buildCircleIcon(Icons.notifications_active_outlined),
+      ],
+    );
+  }
+
+  Widget _buildStrengthRadar() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(28), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 20)]),
+      child: Column(
+        children: [
+          _buildProgressBar("Logical Reasoning", _logicalScore, Colors.blue),
+          const SizedBox(height: 16),
+          _buildProgressBar("Quantitative Aptitude", _quantScore, Colors.purple),
+          const SizedBox(height: 16),
+          _buildProgressBar("Verbal Ability", _verbalScore, Colors.orange),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProgressBar(String label, double val, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blueGrey)),
+          Text("${(val * 100).toInt()}%", style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)),
+        ]),
+        const SizedBox(height: 8),
+        ClipRRect(borderRadius: BorderRadius.circular(10), child: LinearProgressIndicator(value: val, backgroundColor: color.withOpacity(0.1), valueColor: AlwaysStoppedAnimation(color), minHeight: 6)),
+      ],
+    );
+  }
+
   Widget _buildBottomNav() {
     return Container(
       margin: const EdgeInsets.fromLTRB(24, 0, 24, 30),
       padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(40),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 30, offset: const Offset(0, 10))],
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(40),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, 10))
+          ]
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -219,95 +398,11 @@ class _ParentDashboardState extends State<ParentDashboard> {
     );
   }
 
-  // --- TOP BAR & OTHER HELPERS (UNCHANGED) ---
-  Widget _buildTopBar() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text("PARENTAL MONITORING", style: TextStyle(color: Colors.grey, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1)),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                const CircleAvatar(radius: 18, backgroundImage: NetworkImage('https://i.pravatar.cc/150?img=11')),
-                const SizedBox(width: 10),
-                const Text("Alex's Progress", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-                const Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.parentTheme),
-              ],
-            ),
-          ],
-        ),
-        _buildCircleIcon(Icons.notifications_active_outlined),
-      ],
-    );
-  }
-
   Widget _buildCircleIcon(IconData icon) {
     return Container(
       padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]),
+      decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
       child: Icon(icon, size: 22, color: AppTheme.parentTheme),
-    );
-  }
-
-  Widget _buildSummaryCard() {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: [AppTheme.parentTheme, Color(0xFF6554C0)]),
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: [BoxShadow(color: AppTheme.parentTheme.withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 10))],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _buildCircularStat("88%", "Score"),
-          _buildCircularStat("12", "Tests"),
-          _buildCircularStat("4", "Badges"),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCircularStat(String value, String label) {
-    return Column(
-      children: [
-        Text(value, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)),
-        const SizedBox(height: 2),
-        Text(label, style: const TextStyle(color: Colors.white60, fontSize: 10, fontWeight: FontWeight.bold)),
-      ],
-    );
-  }
-
-  Widget _buildStrengthRadar() {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(28), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 20)]),
-      child: Column(
-        children: [
-          _buildProgressBar("Logic & Reasoning", 0.9, Colors.blue),
-          const SizedBox(height: 16),
-          _buildProgressBar("Creative Thinking", 0.6, Colors.purple),
-          const SizedBox(height: 16),
-          _buildProgressBar("Technical Knowledge", 0.85, Colors.orange),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildProgressBar(String label, double val, Color color) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blueGrey)),
-          Text("${(val * 100).toInt()}%", style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)),
-        ]),
-        const SizedBox(height: 8),
-        ClipRRect(borderRadius: BorderRadius.circular(10), child: LinearProgressIndicator(value: val, backgroundColor: color.withOpacity(0.1), valueColor: AlwaysStoppedAnimation(color), minHeight: 6)),
-      ],
     );
   }
 }

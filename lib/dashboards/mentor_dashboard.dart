@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../profiles/mentor_profile.dart';
-import '../screens/mentor_schedule_screen.dart'; // Ensure this is imported
+import '../screens/mentor_schedule_screen.dart';
+import '../screens/mentor_chat_screen.dart';
 
 class MentorDashboard extends StatefulWidget {
   const MentorDashboard({super.key});
@@ -11,18 +12,25 @@ class MentorDashboard extends StatefulWidget {
 }
 
 class _MentorDashboardState extends State<MentorDashboard> {
-  // 1. TRACK THE ACTIVE TAB
   int _currentIndex = 0;
+  // ✅ Added flag to control Bottom Nav visibility
+  bool _hideNavBar = false;
 
-  // 2. WIDGET SWITCHER LOGIC
   Widget _buildBody() {
     switch (_currentIndex) {
       case 0:
         return _buildHomeContent();
       case 1:
-        return const MentorScheduleScreen(); // Your new high-end Schedule UI
+        return const MentorScheduleScreen();
       case 2:
-        return const Center(child: Text("Messages & Chats", style: TextStyle(fontWeight: FontWeight.bold)));
+      // ✅ Listen to chat toggle to hide/show Nav Bar
+        return MentorChatScreen(
+          onChatToggle: (isFullChatActive) {
+            setState(() {
+              _hideNavBar = isFullChatActive;
+            });
+          },
+        );
       case 3:
         return const MentorProfile();
       default:
@@ -34,16 +42,16 @@ class _MentorDashboardState extends State<MentorDashboard> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF4F7F6),
-      // AnimatedSwitcher for smooth transitions between tabs
       body: AnimatedSwitcher(
         duration: const Duration(milliseconds: 300),
         child: _buildBody(),
       ),
-      bottomNavigationBar: _buildBottomNav(),
+      // ✅ Physically hide nav bar based on chat state
+      bottomNavigationBar: _hideNavBar ? const SizedBox.shrink() : _buildBottomNav(),
     );
   }
 
-  // --- HOME CONTENT (Original Dashboard View) ---
+  // --- HOME CONTENT ---
   Widget _buildHomeContent() {
     return SafeArea(
       child: SingleChildScrollView(
@@ -71,22 +79,18 @@ class _MentorDashboardState extends State<MentorDashboard> {
               children: [
                 const Text("Today's Schedule", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
                 GestureDetector(
-                  // UPDATED: Now switches the tab index to 1
                   onTap: () => setState(() => _currentIndex = 1),
                   child: Text("VIEW CALENDAR",
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.mentor.withOpacity(0.7))),
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.mentor.withValues(alpha: 0.7))),
                 ),
               ],
             ),
             const SizedBox(height: 16),
-
-            // Interaction: Tapping the live session also takes you to the schedule
             GestureDetector(
               onTap: () => setState(() => _currentIndex = 1),
               child: _buildScheduleTile("04:30 PM", "Alex", "Career Pathing - Session 3", isLive: true),
             ),
             _buildScheduleTile("06:00 PM", "Priya Sharma", "Resume Review", isLive: false),
-
             const SizedBox(height: 32),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -106,7 +110,7 @@ class _MentorDashboardState extends State<MentorDashboard> {
     );
   }
 
-  // --- PERSISTENT BOTTOM NAVIGATION ---
+  // --- BOTTOM NAVIGATION ---
   Widget _buildBottomNav() {
     return Container(
       margin: const EdgeInsets.fromLTRB(24, 0, 24, 30),
@@ -114,7 +118,7 @@ class _MentorDashboardState extends State<MentorDashboard> {
       decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(40),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 30, offset: const Offset(0, 10))]
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 30, offset: const Offset(0, 10))]
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -131,7 +135,10 @@ class _MentorDashboardState extends State<MentorDashboard> {
   Widget _buildNavItem(IconData icon, String label, int index) {
     bool isActive = _currentIndex == index;
     return GestureDetector(
-      onTap: () => setState(() => _currentIndex = index),
+      onTap: () => setState(() {
+        _currentIndex = index;
+        _hideNavBar = false;
+      }),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -154,7 +161,7 @@ class _MentorDashboardState extends State<MentorDashboard> {
     );
   }
 
-  // --- HEADER & COMPONENT HELPERS ---
+  // --- COMPONENT HELPERS ---
   Widget _buildHeader(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -174,7 +181,7 @@ class _MentorDashboardState extends State<MentorDashboard> {
         ),
         Container(
           padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, border: Border.all(color: Colors.grey.withOpacity(0.1))),
+          decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, border: Border.all(color: Colors.grey.withValues(alpha: 0.1))),
           child: const Icon(Icons.settings_suggest_outlined, size: 22, color: AppTheme.mentor),
         ),
       ],
@@ -188,7 +195,7 @@ class _MentorDashboardState extends State<MentorDashboard> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(24),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 20, offset: const Offset(0, 10))],
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 20, offset: const Offset(0, 10))],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -210,7 +217,7 @@ class _MentorDashboardState extends State<MentorDashboard> {
       decoration: BoxDecoration(
         color: isLive ? AppTheme.mentor : Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: isLive ? [BoxShadow(color: AppTheme.mentor.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8))] : [],
+        boxShadow: isLive ? [BoxShadow(color: AppTheme.mentor.withValues(alpha: 0.3), blurRadius: 15, offset: const Offset(0, 8))] : [],
       ),
       child: Row(
         children: [
@@ -263,7 +270,7 @@ class _MentorDashboardState extends State<MentorDashboard> {
                 CircularProgressIndicator(
                     value: progress,
                     strokeWidth: 4,
-                    backgroundColor: Colors.grey.withOpacity(0.1),
+                    backgroundColor: Colors.grey.withValues(alpha: 0.1),
                     valueColor: const AlwaysStoppedAnimation(AppTheme.mentor)
                 ),
                 Center(child: Text("${(progress * 100).toInt()}%",

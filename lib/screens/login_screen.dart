@@ -5,6 +5,8 @@ import '../dashboards/student_dashboard.dart';
 import '../dashboards/parent_dashboard.dart';
 import '../dashboards/mentor_dashboard.dart';
 import '../services/auth_service.dart';
+import '../screens/link_ward_screen.dart';
+import '../services/assessment_service.dart';
 
 class LoginScreen extends StatefulWidget {
   final String role;
@@ -142,22 +144,55 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  void _navigateToDashboard() {
+  // ✅ ADD 'async' here
+  void _navigateToDashboard() async {
     Widget nextScreen;
+
     if (widget.role == "Student") {
       nextScreen = const StudentDashboard();
-    } else if (widget.role == "Parent") {
-      nextScreen = const ParentDashboard();
-    } else if (widget.role == "Mentor") {
+    }
+    else if (widget.role == "Parent") {
+      final AssessmentService apiService = AssessmentService();
+
+      // Show a loading indicator while checking status
+      showDialog(
+          context: context,
+          barrierDismissible: false, // Prevents user from tapping away
+          builder: (context) => const Center(child: CircularProgressIndicator())
+      );
+
+      try {
+        // ✅ This MUST be awaited to get the real result from PostgreSQL
+        final status = await apiService.getLinkedStudentStatus();
+
+        if (!mounted) return;
+        Navigator.pop(context); // Close the loading dialog
+
+        if (status['is_linked'] == true) {
+          nextScreen = const ParentDashboard();
+        } else {
+          nextScreen = const LinkWardScreen();
+        }
+      } catch (e) {
+        if (!mounted) return;
+        Navigator.pop(context);
+        _showSnackBar("Session error: Please link your ward manually.", Colors.orange);
+        nextScreen = const LinkWardScreen();
+      }
+    }
+    else if (widget.role == "Mentor") {
       nextScreen = const MentorDashboard();
     } else {
       return;
     }
 
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => nextScreen),
-    );
+    // Final navigation
+    if (mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => nextScreen),
+      );
+    }
   }
 
   @override

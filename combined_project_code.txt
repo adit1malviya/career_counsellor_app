@@ -333,6 +333,8 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../profiles/parent_profile.dart';
 import '../screens/parent_report_screen.dart';
+import '../services/assessment_service.dart';
+import '../dashboards/roadmap_dashboard.dart';
 
 class ParentDashboard extends StatefulWidget {
   const ParentDashboard({super.key});
@@ -343,8 +345,19 @@ class ParentDashboard extends StatefulWidget {
 
 class _ParentDashboardState extends State<ParentDashboard> {
   int _currentIndex = 0;
+  final AssessmentService _apiService = AssessmentService();
 
-  // 1. SHARED DATA SOURCE
+  // Dynamic State Variables
+  String _wardName = "Ward";
+  String _wardId = "";
+  double _logicalScore = 0.0;
+  double _quantScore = 0.0;
+  double _verbalScore = 0.0;
+
+  Map<String, dynamic>? _roadmapData;
+  bool _isLoading = true; // ✅ Track global loading state
+
+  // Mock reports - in a real app, fetch these from an API
   final List<Map<String, dynamic>> allReports = [
     {
       "title": "Career Pathing",
@@ -354,19 +367,67 @@ class _ParentDashboardState extends State<ParentDashboard> {
       "mentor": "Dr. Sarah James",
       "avatar": "https://i.pravatar.cc/150?img=32",
       "category": "Technical",
-      "duration": "45 min"
-    },
-    {
-      "title": "Aptitude Review",
-      "subtitle": "Logical Reasoning",
-      "date": "2026-03-22",
-      "displayDate": "22 Mar",
-      "mentor": "Prof. Mike Wheeler",
-      "avatar": "https://i.pravatar.cc/150?img=12",
-      "category": "Aptitude",
-      "duration": "60 min"
     },
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAllData();
+  }
+
+  /// ✅ Orchestrator: Fetches all necessary ward data
+  Future<void> _loadAllData() async {
+    try {
+      final status = await _apiService.getLinkedStudentStatus();
+
+      if (status['is_linked'] == true) {
+        _wardId = status['student']['id'];
+        _wardName = status['student']['full_name'] ?? "Ward";
+
+        // Fetch scores and roadmap in parallel for speed
+        final results = await Future.wait([
+          _apiService.getProfileById(_wardId),
+          _apiService.getWardRoadmap(_wardId),
+        ]);
+
+        final profileData = results[0] as Map<String, dynamic>;
+        final roadmap = results[1] as Map<String, dynamic>?;
+
+        final Map<String, dynamic> apti = profileData['apti_data'] ?? {};
+        final Map<String, dynamic> scores = apti['scores'] ?? {};
+        final double max = (scores['max_score'] ?? 15).toDouble();
+
+        if (mounted) {
+          setState(() {
+            _logicalScore = ((scores['logical'] ?? 0).toDouble()) / max;
+            _quantScore = ((scores['quantitative'] ?? 0).toDouble()) / max;
+            _verbalScore = ((scores['verbal'] ?? 0).toDouble()) / max;
+            _roadmapData = roadmap;
+            _isLoading = false;
+          });
+        }
+      } else {
+        if (mounted) setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      debugPrint("Dashboard Error: $e");
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFEDF1F9),
+      // Using AnimatedSwitcher for smooth tab transitions
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 300),
+        child: _buildBody(),
+      ),
+      bottomNavigationBar: _buildBottomNav(),
+    );
+  }
 
   Widget _buildBody() {
     switch (_currentIndex) {
@@ -378,64 +439,129 @@ class _ParentDashboardState extends State<ParentDashboard> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFEDF1F9),
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 300),
-        child: _buildBody(),
-      ),
-      bottomNavigationBar: _buildBottomNav(),
-    );
-  }
-
   Widget _buildHomeContent() {
-    // 2. LOGIC: PICK ONLY THE SINGLE LATEST REPORT
-    final latestReport = allReports.first;
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator(color: AppTheme.parentTheme));
+    }
+
+    final firstName = _wardName.split(' ')[0];
 
     return SafeArea(
-      child: SingleChildScrollView(
-        key: const PageStorageKey('parentHomeScroll'),
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 20),
-            _buildTopBar(),
-            const SizedBox(height: 24),
-            _buildSummaryCard(),
-            const SizedBox(height: 32),
-            const Text("Alex's Top Strengths",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
-            const SizedBox(height: 16),
-            _buildStrengthRadar(),
-            const SizedBox(height: 32),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text("Latest Session Report", // Updated label
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
-                GestureDetector(
-                  onTap: () => setState(() => _currentIndex = 1),
-                  child: Text("VIEW ALL",
-                      style: TextStyle(fontSize: 12, color: AppTheme.parentTheme.withOpacity(0.6), fontWeight: FontWeight.bold)),
+      child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              // Always use Clamping to prevent that "pulling away from the top" look
+              physics: const ClampingScrollPhysics(),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  // mainAxisSize: MainAxisSize.min is crucial to prevent extra height
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(height: 20),
+                    _buildTopBar(firstName),
+                    const SizedBox(height: 20),
+
+                    GestureDetector(
+                      onTap: () {
+                        if (_wardId.isNotEmpty) {
+                          Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => RoadmapDashboard(studentId: _wardId))
+                          );
+                        }
+                      },
+                      child: _buildRoadmapTrackerCard(firstName),
+                    ),
+
+                    const SizedBox(height: 32),
+                    Text("$firstName's Top Strengths",
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+                    const SizedBox(height: 16),
+                    _buildStrengthRadar(),
+
+                    const SizedBox(height: 32),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text("Latest Session Report",
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+                        GestureDetector(
+                          onTap: () => setState(() => _currentIndex = 1),
+                          child: Text("VIEW ALL",
+                              style: TextStyle(fontSize: 12, color: AppTheme.parentTheme.withOpacity(0.6), fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    _buildPremiumReportCard(allReports.first),
+
+                    // ✅ The "Smart Stopper"
+                    // This ensures the scroll ends right after the card,
+                    // but gives it enough room to clear the nav bar.
+                    // If it's still scrolling too much, reduce 110 to 90.
+                    const SizedBox(height: 55),
+                  ],
                 ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // SHOWING ONLY THE ONE LATEST CARD
-            _buildPremiumReportCard(latestReport),
-
-            const SizedBox(height: 120),
-          ],
-        ),
+              ),
+            );
+          }
       ),
     );
   }
 
-  // --- REUSABLE PREMIUM CARD UI ---
+  Widget _buildRoadmapTrackerCard(String name) {
+    // ✅ Improved Logic: Check if roadmap data exists at all
+    bool hasRoadmap = _roadmapData != null && _roadmapData!.isNotEmpty;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF5141B3), Color(0xFF6554C0)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(
+              color: const Color(0xFF5141B3).withOpacity(0.2),
+              blurRadius: 15,
+              offset: const Offset(0, 8)
+          )
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(hasRoadmap ? "ROADMAP ACTIVE" : "JOURNEY STATUS",
+              style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+          const SizedBox(height: 12),
+          Text(
+            // ✅ Updated Dynamic Text
+            hasRoadmap
+                ? "Track $name's\nRoadmap & Progress"
+                : "$name's journey\nhas not started yet",
+            style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900, height: 1.2),
+          ),
+          const SizedBox(height: 16),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: LinearProgressIndicator(
+              // If data exists but progress isn't defined, default to a small visual start (0.1)
+              value: hasRoadmap ? (_roadmapData!['overall_progress']?.toDouble() ?? 0.1) : 0.0,
+              minHeight: 6,
+              backgroundColor: Colors.white.withOpacity(0.2),
+              valueColor: const AlwaysStoppedAnimation(Color(0xFF00FFC2)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildPremiumReportCard(Map<String, dynamic> report) {
     return Container(
       decoration: BoxDecoration(
@@ -467,8 +593,7 @@ class _ParentDashboardState extends State<ParentDashboard> {
                         style: const TextStyle(color: AppTheme.parentTheme, fontSize: 9, fontWeight: FontWeight.w900),
                       ),
                     ),
-                    Text(report['displayDate'],
-                        style: TextStyle(color: Colors.grey.shade500, fontSize: 11, fontWeight: FontWeight.bold)),
+                    Text(report['date'] ?? "28 Mar", style: TextStyle(color: Colors.grey.shade500, fontSize: 11, fontWeight: FontWeight.bold)),
                   ],
                 ),
                 const SizedBox(height: 18),
@@ -478,9 +603,9 @@ class _ParentDashboardState extends State<ParentDashboard> {
                 const SizedBox(height: 20),
                 Row(
                   children: [
-                    CircleAvatar(radius: 16, backgroundImage: NetworkImage(report['avatar'])),
+                    CircleAvatar(radius: 16, backgroundImage: NetworkImage(report['avatar'] ?? 'https://i.pravatar.cc/150')),
                     const SizedBox(width: 12),
-                    Expanded(child: Text(report['mentor'], style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold))),
+                    Expanded(child: Text(report['mentor'] ?? "Mentor", style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold))),
                     const Icon(Icons.verified_rounded, color: Colors.blue, size: 18),
                   ],
                 ),
@@ -493,10 +618,9 @@ class _ParentDashboardState extends State<ParentDashboard> {
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 18),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF0EFFF),
-                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30)),
-                border: Border(top: BorderSide(color: AppTheme.parentTheme.withOpacity(0.1), width: 1.5)),
+              decoration: const BoxDecoration(
+                color: Color(0xFFF0EFFF),
+                borderRadius: BorderRadius.vertical(bottom: Radius.circular(30)),
               ),
               child: const Center(
                 child: Text("VIEW FULL EVALUATION",
@@ -509,15 +633,70 @@ class _ParentDashboardState extends State<ParentDashboard> {
     );
   }
 
-  // --- PERSISTENT BOTTOM NAVIGATION ---
+  Widget _buildTopBar(String name) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("PARENTAL MONITORING", style: TextStyle(color: Colors.grey, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1)),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                const CircleAvatar(radius: 18, backgroundImage: NetworkImage('https://i.pravatar.cc/150?img=11')),
+                const SizedBox(width: 10),
+                Text("$name's Progress", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                const Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.parentTheme),
+              ],
+            ),
+          ],
+        ),
+        _buildCircleIcon(Icons.notifications_active_outlined),
+      ],
+    );
+  }
+
+  Widget _buildStrengthRadar() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(28), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 20)]),
+      child: Column(
+        children: [
+          _buildProgressBar("Logical Reasoning", _logicalScore, Colors.blue),
+          const SizedBox(height: 16),
+          _buildProgressBar("Quantitative Aptitude", _quantScore, Colors.purple),
+          const SizedBox(height: 16),
+          _buildProgressBar("Verbal Ability", _verbalScore, Colors.orange),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProgressBar(String label, double val, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blueGrey)),
+          Text("${(val * 100).toInt()}%", style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)),
+        ]),
+        const SizedBox(height: 8),
+        ClipRRect(borderRadius: BorderRadius.circular(10), child: LinearProgressIndicator(value: val, backgroundColor: color.withOpacity(0.1), valueColor: AlwaysStoppedAnimation(color), minHeight: 6)),
+      ],
+    );
+  }
+
   Widget _buildBottomNav() {
     return Container(
       margin: const EdgeInsets.fromLTRB(24, 0, 24, 30),
       padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(40),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 30, offset: const Offset(0, 10))],
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(40),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, 10))
+          ]
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -550,95 +729,316 @@ class _ParentDashboardState extends State<ParentDashboard> {
     );
   }
 
-  // --- TOP BAR & OTHER HELPERS (UNCHANGED) ---
-  Widget _buildTopBar() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text("PARENTAL MONITORING", style: TextStyle(color: Colors.grey, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1)),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                const CircleAvatar(radius: 18, backgroundImage: NetworkImage('https://i.pravatar.cc/150?img=11')),
-                const SizedBox(width: 10),
-                const Text("Alex's Progress", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-                const Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.parentTheme),
-              ],
-            ),
-          ],
-        ),
-        _buildCircleIcon(Icons.notifications_active_outlined),
-      ],
-    );
-  }
-
   Widget _buildCircleIcon(IconData icon) {
     return Container(
       padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]),
+      decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
       child: Icon(icon, size: 22, color: AppTheme.parentTheme),
     );
   }
+}
 
-  Widget _buildSummaryCard() {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: [AppTheme.parentTheme, Color(0xFF6554C0)]),
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: [BoxShadow(color: AppTheme.parentTheme.withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 10))],
+================================================================================
+FILE: dashboards\roadmap_dashboard.dart
+================================================================================
+
+import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
+import '../services/assessment_service.dart';
+
+class RoadmapDashboard extends StatefulWidget {
+  final String? studentId; // ✅ Added to support Parent viewing a Ward
+  const RoadmapDashboard({super.key, this.studentId});
+
+  @override
+  State<RoadmapDashboard> createState() => _RoadmapDashboardState();
+}
+
+class _RoadmapDashboardState extends State<RoadmapDashboard> {
+  final AssessmentService _apiService = AssessmentService();
+  late Future<Map<String, dynamic>?> _roadmapFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRoadmap();
+  }
+
+  void _loadRoadmap() {
+    // ✅ Logic: If studentId is passed (Parent Mode), fetch Ward's Roadmap.
+    // Otherwise (Student Mode), fetch own roadmap.
+    if (widget.studentId != null) {
+      _roadmapFuture = _apiService.getWardRoadmap(widget.studentId!);
+    } else {
+      _roadmapFuture = _apiService.getCurrentRoadmap();
+    }
+  }
+
+  void _handleTaskToggle(Map<String, dynamic> task) async {
+    if (task['status'] == 'Completed') return;
+
+    final taskId = task['id'];
+    try {
+      await _apiService.toggleTaskCompletion(taskId);
+      setState(() {
+        task['status'] = 'Completed';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Task completed!"), backgroundColor: Color(0xFF00D293)),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: $e"), backgroundColor: Colors.redAccent),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        title: const Text(
+          "MY ROADMAP",
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, letterSpacing: 2, color: AppTheme.textSecondary),
+        ),
+        centerTitle: true,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: AppTheme.textPrimary),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
+      body: Stack(
         children: [
-          _buildCircularStat("88%", "Score"),
-          _buildCircularStat("12", "Tests"),
-          _buildCircularStat("4", "Badges"),
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [AppTheme.backgroundTop, AppTheme.backgroundMid],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+            ),
+            width: double.infinity,
+            height: double.infinity,
+          ),
+          SafeArea(
+            child: FutureBuilder<Map<String, dynamic>?>(
+              future: _roadmapFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator(color: AppTheme.student));
+                } else if (snapshot.hasError) {
+                  return Center(child: Text("Error: ${snapshot.error}", style: const TextStyle(color: Colors.red)));
+                } else if (!snapshot.hasData || snapshot.data == null) {
+                  return const Center(child: Text("No active roadmap found."));
+                }
+
+                final roadmap = snapshot.data!;
+                final phases = roadmap['phases'] as List<dynamic>? ?? [];
+
+                return ListView(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                  // ✅ FIX: ClampingScrollPhysics stops the "unnecessary scrolling" into empty space
+                  physics: const ClampingScrollPhysics(),
+                  children: [
+                    _buildHeroHeader(roadmap),
+                    const SizedBox(height: 35),
+                    const Text(
+                      "JOURNEY PHASES",
+                      style: TextStyle(
+                        color: AppTheme.textMuted,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    ...phases.asMap().entries.map((entry) => _buildPhaseCard(entry.value, entry.key + 1)),
+                    const SizedBox(height: 40),
+                  ],
+                );
+              },
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildCircularStat(String value, String label) {
-    return Column(
-      children: [
-        Text(value, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)),
-        const SizedBox(height: 2),
-        Text(label, style: const TextStyle(color: Colors.white60, fontSize: 10, fontWeight: FontWeight.bold)),
-      ],
-    );
-  }
-
-  Widget _buildStrengthRadar() {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(28), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 20)]),
-      child: Column(
-        children: [
-          _buildProgressBar("Logic & Reasoning", 0.9, Colors.blue),
-          const SizedBox(height: 16),
-          _buildProgressBar("Creative Thinking", 0.6, Colors.purple),
-          const SizedBox(height: 16),
-          _buildProgressBar("Technical Knowledge", 0.85, Colors.orange),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildProgressBar(String label, double val, Color color) {
+  Widget _buildHeroHeader(Map<String, dynamic> roadmap) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blueGrey)),
-          Text("${(val * 100).toInt()}%", style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)),
-        ]),
-        const SizedBox(height: 8),
-        ClipRRect(borderRadius: BorderRadius.circular(10), child: LinearProgressIndicator(value: val, backgroundColor: color.withOpacity(0.1), valueColor: AlwaysStoppedAnimation(color), minHeight: 6)),
+        Text(
+          // ✅ KEY FIX: Maps to 'career_title' from backend JSON
+          roadmap['career_title'] ?? roadmap['title'] ?? 'Career Roadmap',
+          style: AppTheme.heading.copyWith(fontSize: 34, height: 1.2),
+        ),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: AppTheme.student.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppTheme.student.withOpacity(0.2)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.track_changes_rounded, size: 18, color: AppTheme.student),
+              const SizedBox(width: 8),
+              Text(
+                // ✅ KEY FIX: Maps to 'total_duration' from backend JSON
+                (roadmap['total_duration'] ?? roadmap['description'] ?? '').toUpperCase(),
+                style: const TextStyle(
+                  color: AppTheme.student,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
+    );
+  }
+
+  Widget _buildPhaseCard(Map<String, dynamic> phase, int phaseNumber) {
+    // ✅ KEY FIX: Backend uses 'weekly_breakdown' or 'tasks' depending on generation logic
+    final tasks = phase['weekly_breakdown'] ?? phase['tasks'] as List<dynamic>? ?? [];
+    final String status = phase['status'] ?? 'Active'; // Default to Active for generated roadmaps
+
+    Color accentColor = (status == 'Completed') ? const Color(0xFF00D293) : AppTheme.student;
+    Color bgColor = (status == 'Completed') ? const Color(0xFFE6FBF4) : AppTheme.studentBg;
+    IconData statusIcon = (status == 'Completed') ? Icons.check_circle_rounded : Icons.play_circle_fill_rounded;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(color: AppTheme.textSecondary.withOpacity(0.06), blurRadius: 20, offset: const Offset(0, 8)),
+        ],
+        border: Border.all(color: Colors.white, width: 2),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Theme(
+          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+          child: ExpansionTile(
+            tilePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            iconColor: accentColor,
+            collapsedIconColor: AppTheme.textMuted,
+            title: Row(
+              children: [
+                Container(
+                  height: 42, width: 42,
+                  decoration: BoxDecoration(color: bgColor, shape: BoxShape.circle),
+                  child: Center(
+                    child: Text("$phaseNumber", style: TextStyle(color: accentColor, fontWeight: FontWeight.w900, fontSize: 18)),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        // ✅ KEY FIX: Maps to 'phase_title' from backend JSON
+                        phase['phase_title'] ?? phase['title'] ?? 'Phase',
+                        style: AppTheme.cardTitle.copyWith(color: AppTheme.textPrimary, fontSize: 16),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(statusIcon, size: 14, color: accentColor),
+                          const SizedBox(width: 4),
+                          Text(status.toUpperCase(), style: TextStyle(color: accentColor, fontWeight: FontWeight.w800, fontSize: 10, letterSpacing: 1)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  border: Border(top: BorderSide(color: Colors.grey.shade200)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 16),
+                    Text(
+                      phase['description'] ?? "Foundation building and skill development.",
+                      style: const TextStyle(fontSize: 13, color: Colors.black54),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      "WEEKLY TASKS",
+                      style: TextStyle(color: AppTheme.textMuted, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.5),
+                    ),
+                    const SizedBox(height: 8),
+                    ...tasks.map((task) => _buildTaskRow(task)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTaskRow(Map<String, dynamic> task) {
+    // ✅ KEY FIX: Maps to 'topic' or 'title' from backend JSON
+    final String title = task['topic'] ?? task['title'] ?? 'Learning Task';
+    bool isCompleted = task['status'] == 'Completed';
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12.0),
+      child: InkWell(
+        onTap: isCompleted ? null : () => _handleTaskToggle(task),
+        borderRadius: BorderRadius.circular(8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 2),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isCompleted ? const Color(0xFF00D293) : Colors.transparent,
+                  border: Border.all(
+                    color: isCompleted ? const Color(0xFF00D293) : AppTheme.textMuted.withOpacity(0.5),
+                    width: 2,
+                  ),
+                ),
+                child: Icon(Icons.check, size: 16, color: isCompleted ? Colors.white : Colors.transparent),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(
+                  color: isCompleted ? AppTheme.textMuted : AppTheme.textPrimary,
+                  fontWeight: isCompleted ? FontWeight.w500 : FontWeight.w700,
+                  fontSize: 14,
+                  height: 1.4,
+                  decoration: isCompleted ? TextDecoration.lineThrough : null,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -652,7 +1052,9 @@ import '../theme/app_theme.dart';
 import '../profiles/student_profile.dart';
 import '../screens/student_setting_screen.dart';
 import '../screens/mentor_list_screen.dart';
-import '../screens/student_test_screen.dart'; // Import the new screen
+import '../screens/student_test_screen.dart';
+import '../services/assessment_service.dart';
+import '../dashboards/roadmap_dashboard.dart';
 
 class StudentDashboard extends StatefulWidget {
   const StudentDashboard({super.key});
@@ -663,19 +1065,69 @@ class StudentDashboard extends StatefulWidget {
 
 class _StudentDashboardState extends State<StudentDashboard> {
   int _currentIndex = 0;
+  final AssessmentService _apiService = AssessmentService();
+
+  // State variables for dynamic data
+  bool _isLoadingStatus = true;
+  bool _hasActiveRoadmap = false;
+  String _userName = "Student";
+  List<dynamic> _recommendedMentors = []; // ✅ New state for backend mentors
+
+  // Superpower values (0.0 to 1.0)
+  double _logicalScore = 0.0;
+  double _quantScore = 0.0;
+  double _verbalScore = 0.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDashboardData();
+  }
+
+  Future<void> _loadDashboardData() async {
+    try {
+      final roadmap = await _apiService.getCurrentRoadmap();
+      final profileData = await _apiService.getUserProfile();
+
+      // 1. Determine career goal for mentor search (fallback to technology)
+      final aspiration = profileData['aspiration_data'] ?? {};
+      String goal = aspiration['dream_career'] ?? "technology";
+
+      // 2. Fetch dynamic mentors from backend [cite: 72]
+      final mentors = await _apiService.searchMentors(careerGoal: goal);
+
+      final Map<String, dynamic> apti = profileData['apti_data'] ?? {};
+      final Map<String, dynamic> scores = apti['scores'] ?? {};
+      final double max = (scores['max_score'] ?? 15).toDouble();
+
+      if (mounted) {
+        setState(() {
+          _hasActiveRoadmap = roadmap != null;
+          _userName = profileData['full_name'] ?? "Student";
+          _recommendedMentors = mentors; // ✅ Sync mentors from backend
+
+          _logicalScore = ((scores['logical'] ?? 0).toDouble()) / max;
+          _quantScore = ((scores['quantitative'] ?? 0).toDouble()) / max;
+          _verbalScore = ((scores['verbal'] ?? 0).toDouble()) / max;
+
+          _isLoadingStatus = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("❌ Error loading dashboard data: $e");
+      if (mounted) {
+        setState(() => _isLoadingStatus = false);
+      }
+    }
+  }
 
   Widget _buildBody() {
     switch (_currentIndex) {
-      case 0:
-        return _buildHomeContent();
-      case 1:
-        return const StudentTestScreen(); // Now shows the Road to Discovery
-      case 2:
-        return const MentorListScreen();
-      case 3:
-        return const StudentProfile();
-      default:
-        return _buildHomeContent();
+      case 0: return _buildHomeContent();
+      case 1: return const StudentTestScreen();
+      case 2: return const MentorListScreen();
+      case 3: return const StudentProfile();
+      default: return _buildHomeContent();
     }
   }
 
@@ -703,8 +1155,13 @@ class _StudentDashboardState extends State<StudentDashboard> {
             _buildHeader(context),
             const SizedBox(height: 24),
             GestureDetector(
-              // UPDATED: Now switches tab index to 1 instead of pushing a new page
-              onTap: () => setState(() => _currentIndex = 1),
+              onTap: () {
+                if (_hasActiveRoadmap) {
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const RoadmapDashboard()));
+                } else {
+                  setState(() => _currentIndex = 1);
+                }
+              },
               child: _buildJourneyCard(),
             ),
             const SizedBox(height: 24),
@@ -732,24 +1189,77 @@ class _StudentDashboardState extends State<StudentDashboard> {
               ],
             ),
             const SizedBox(height: 16),
+
+            // ✅ Dynamic Mentor Horizontal List
             SizedBox(
               height: 195,
-              child: ListView(
+              child: _recommendedMentors.isEmpty
+                  ? const Center(child: Text("Finding mentors..."))
+                  : ListView.builder(
                 scrollDirection: Axis.horizontal,
                 clipBehavior: Clip.none,
-                children: [
-                  _buildMentorCard("Dr. Sarah James", "Software Engineering", 'https://i.pravatar.cc/150?img=32'),
-                  const SizedBox(width: 16),
-                  _buildMentorCard("John Smith", "Cybersecurity Expert", 'https://i.pravatar.cc/150?img=60'),
-                  const SizedBox(width: 16),
-                  _buildMentorCard("Maria Garcia", "UI/UX Designer", 'https://i.pravatar.cc/150?img=45'),
-                ],
+                itemCount: _recommendedMentors.length,
+                itemBuilder: (context, index) {
+                  final m = _recommendedMentors[index];
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 16),
+                    child: _buildMentorCard(
+                        m['full_name'] ?? "Expert",
+                        m['expertise'] ?? "Professional",
+                        'https://i.pravatar.cc/150?u=${m['id']}' // Unique dynamic avatar
+                    ),
+                  );
+                },
               ),
             ),
             const SizedBox(height: 120),
           ],
         ),
       ),
+    );
+  }
+
+  // --- UI HELPERS (UNCHANGED DESIGN) ---
+
+  Widget _buildStrengthPreview() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 20, offset: const Offset(0, 10))]
+      ),
+      child: Column(
+        children: [
+          _buildStrengthBar("Logical Reasoning", _logicalScore, Colors.blue),
+          const SizedBox(height: 14),
+          _buildStrengthBar("Quantitative Aptitude", _quantScore, Colors.purple),
+          const SizedBox(height: 14),
+          _buildStrengthBar("Verbal Ability", _verbalScore, Colors.orange),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStrengthBar(String label, double progress, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blueGrey)),
+          Text("${(progress * 100).toInt()}%", style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12))
+        ]),
+        const SizedBox(height: 8),
+        ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: LinearProgressIndicator(
+                value: progress,
+                minHeight: 6,
+                backgroundColor: color.withOpacity(0.1),
+                valueColor: AlwaysStoppedAnimation(color)
+            )
+        ),
+      ],
     );
   }
 
@@ -805,17 +1315,14 @@ class _StudentDashboardState extends State<StudentDashboard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text("Welcome back,", style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.bold)),
-                Text("Alex", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppTheme.student)),
+                Text(_userName, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppTheme.student)),
               ],
             ),
           ],
         ),
         Row(
           children: [
-            GestureDetector(
-              onTap: () {},
-              child: _buildCircleIcon(Icons.notifications_none_rounded),
-            ),
+            _buildCircleIcon(Icons.notifications_none_rounded),
             const SizedBox(width: 12),
             GestureDetector(
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const StudentSettingScreen())),
@@ -847,23 +1354,20 @@ class _StudentDashboardState extends State<StudentDashboard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text("CAREER DISCOVERY", style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
-              Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 14),
+              Text(_hasActiveRoadmap ? "ACTIVE ROADMAP" : "CAREER DISCOVERY", style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+              const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 14),
             ],
           ),
           const SizedBox(height: 12),
-          const Text("Explore Your Career\nPathways", style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, height: 1.2)),
+          if (_isLoadingStatus)
+            const SizedBox(height: 52, child: Align(alignment: Alignment.centerLeft, child: SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))))
+          else
+            Text(_hasActiveRoadmap ? "Continue Your\nJourney" : "Explore Your\nCareer Pathways", style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, height: 1.2)),
           const SizedBox(height: 20),
-          Row(children: List.generate(5, (index) => Expanded(
-            child: Container(
-              height: 6,
-              margin: EdgeInsets.only(right: index == 4 ? 0 : 8),
-              decoration: BoxDecoration(color: index < 1 ? const Color(0xFF00FFC2) : Colors.white24, borderRadius: BorderRadius.circular(10)),
-            ),
-          ))),
+          Row(children: List.generate(5, (index) => Expanded(child: Container(height: 6, margin: EdgeInsets.only(right: index == 4 ? 0 : 8), decoration: BoxDecoration(color: _hasActiveRoadmap ? const Color(0xFF00FFC2) : (index < 1 ? const Color(0xFF00FFC2) : Colors.white24), borderRadius: BorderRadius.circular(10)))))),
         ],
       ),
     );
@@ -885,36 +1389,6 @@ class _StudentDashboardState extends State<StudentDashboard> {
     );
   }
 
-  Widget _buildStrengthPreview() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 20, offset: const Offset(0, 10))]),
-      child: Column(
-        children: [
-          _buildStrengthBar("Logical Reasoning", 0.9, Colors.blue),
-          const SizedBox(height: 14),
-          _buildStrengthBar("Creative Thinking", 0.7, Colors.purple),
-          const SizedBox(height: 14),
-          _buildStrengthBar("Verbal Ability", 0.5, Colors.orange),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStrengthBar(String label, double progress, Color color) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blueGrey)),
-          Text("${(progress * 100).toInt()}%", style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12))
-        ]),
-        const SizedBox(height: 8),
-        ClipRRect(borderRadius: BorderRadius.circular(10), child: LinearProgressIndicator(value: progress, minHeight: 6, backgroundColor: color.withOpacity(0.1), valueColor: AlwaysStoppedAnimation(color))),
-      ],
-    );
-  }
-
   Widget _buildMentorCard(String name, String role, String img) {
     return Container(
       width: 165,
@@ -924,8 +1398,8 @@ class _StudentDashboardState extends State<StudentDashboard> {
         children: [
           CircleAvatar(radius: 30, backgroundImage: NetworkImage(img)),
           const SizedBox(height: 12),
-          Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14), textAlign: TextAlign.center, maxLines: 1),
-          Text(role, style: const TextStyle(color: Colors.grey, fontSize: 11), textAlign: TextAlign.center),
+          Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
+          Text(role, style: const TextStyle(color: Colors.grey, fontSize: 11), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
           const Spacer(),
           ElevatedButton(
               onPressed: () => setState(() => _currentIndex = 2),
@@ -1018,26 +1492,146 @@ FILE: profiles\mentor_profile.dart
 
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import '../services/mentor_service.dart';
 
-class MentorProfile extends StatelessWidget {
+class MentorProfile extends StatefulWidget {
   const MentorProfile({super.key});
 
   @override
+  State<MentorProfile> createState() => _MentorProfileState();
+}
+
+class _MentorProfileState extends State<MentorProfile> {
+  final MentorService _apiService = MentorService();
+  Map<String, dynamic>? _profileData;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    try {
+      final data = await _apiService.getMyProfile();
+      setState(() {
+        _profileData = data;
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint("❌ UI Load Error: $e");
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _showEditDialog() {
+    final expertiseController = TextEditingController(text: _profileData?['expertise'] ?? "");
+    final bioController = TextEditingController(text: _profileData?['bio'] ?? "");
+    final expController = TextEditingController(text: _profileData?['years_experience']?.toString() ?? "0");
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(30))),
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+            left: 24,
+            right: 24,
+            top: 24
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text("Update Professional Info", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            TextField(controller: expertiseController, decoration: const InputDecoration(labelText: "Role/Expertise")),
+            TextField(controller: bioController, decoration: const InputDecoration(labelText: "Biography"), maxLines: 3),
+            TextField(controller: expController, decoration: const InputDecoration(labelText: "Years of Experience"), keyboardType: TextInputType.number),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF009688),
+                  minimumSize: const Size(double.infinity, 50),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
+              ),
+              onPressed: () async {
+                final success = await _apiService.updateProfile({
+                  "expertise": expertiseController.text.trim(),
+                  "bio": bioController.text.trim(),
+                  "years_experience": int.tryParse(expController.text.trim()) ?? 0,
+                });
+
+                if (success) {
+                  if (mounted) {
+                    Navigator.pop(context);
+                    _loadProfile();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text("Profile updated successfully!"),
+                        backgroundColor: Colors.green,
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Failed to update profile. Please try again."),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              },
+              child: const Text("Save Changes", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+            const SizedBox(height: 30),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator(color: AppTheme.mentor)));
+
+    // 1. Name from Backend
+    final name = _profileData?['full_name'] ?? "Mentor Name";
+
+    // 2. Specialty/Role from Backend (The text under the name)
+    final backendSpecialty = _profileData?['expertise'] ?? "Professional Mentor";
+
+    // 3. Biography from Backend
+    final bio = _profileData?['bio'] ?? "Biography not provided.";
+
+    // 4. Experience from Backend
+    final yearsExp = _profileData?['years_experience']?.toString() ?? "0";
+
+    final rating = _profileData?['rating']?.toString() ?? "0.0";
+
+    // ✅ HARDCODED Core Specialties (As requested)
+    final List<String> hardcodedSkills = [
+      "UI/UX Design",
+      "System Architecture",
+      "Career Strategy",
+      "Public Speaking",
+      "Technical Leadership"
+    ];
+
     return Scaffold(
       backgroundColor: const Color(0xFFF4F7F6),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
-        title: const Text(
-          "Professional Profile",
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 18),
-        ),
+        title: const Text("Professional Profile", style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 18)),
         actions: [
           IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.share_outlined, color: AppTheme.mentor, size: 22),
+              onPressed: _showEditDialog,
+              icon: const Icon(Icons.edit_note_rounded, color: AppTheme.mentor, size: 28)
           ),
           const SizedBox(width: 8),
         ],
@@ -1047,56 +1641,42 @@ class MentorProfile extends StatelessWidget {
         child: Column(
           children: [
             const SizedBox(height: 20),
-
-            // 1. MENTOR IDENTITY HEADER
-            _buildMentorHeader(),
+            // Header uses Name and Backend Specialty
+            _buildMentorHeader(name, backendSpecialty),
 
             const SizedBox(height: 30),
-
-            // 2. PERFORMANCE STATS (Quick Impact numbers)
-            _buildImpactBar(),
+            _buildImpactBar(rating, yearsExp),
 
             const SizedBox(height: 32),
-
-            // 3. ABOUT / BIO
             _buildSectionHeader("Biography"),
             _buildProfileCard([
-              const Padding(
-                padding: EdgeInsets.all(20),
-                child: Text(
-                  "Senior Software Architect with 10+ years of experience in Silicon Valley. Passionate about guiding students toward fulfilling careers in UI/UX and Backend Systems.",
-                  style: TextStyle(color: Colors.black54, fontSize: 14, height: 1.5),
-                ),
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Text(bio, style: const TextStyle(color: Colors.black54, fontSize: 14, height: 1.5)),
               ),
             ]),
 
             const SizedBox(height: 25),
-
-            // 4. EXPERTISE TAGS
             _buildSectionHeader("Core Specialties"),
+
+            // ✅ This section is now purely hardcoded as requested
             Wrap(
               spacing: 10,
               runSpacing: 10,
-              children: [
-                _buildTechChip("UI/UX Design"),
-                _buildTechChip("System Architecture"),
-                _buildTechChip("Career Strategy"),
-                _buildTechChip("Public Speaking"),
-              ],
+              children: hardcodedSkills.map<Widget>((skill) => _buildTechChip(skill)).toList(),
             ),
 
             const SizedBox(height: 32),
-
-            // 5. ACCOUNT & SETTINGS
             _buildSectionHeader("Account Settings"),
             _buildProfileCard([
-              _buildInfoTile(Icons.verified_user_outlined, "Verification Status", "Verified Expert", textColor: AppTheme.mentor),
+              _buildInfoTile(Icons.verified_user_outlined, "Verification Status",
+                  _profileData?['is_verified'] == true ? "Verified Expert" : "Pending",
+                  textColor: AppTheme.mentor),
               _buildDivider(),
               _buildInfoTile(Icons.payment_rounded, "Payout Settings", "Bank Account Linked"),
               _buildDivider(),
               _buildInfoTile(Icons.logout_rounded, "Logout", "Sign out", textColor: Colors.redAccent),
             ]),
-
             const SizedBox(height: 50),
           ],
         ),
@@ -1104,107 +1684,64 @@ class MentorProfile extends StatelessWidget {
     );
   }
 
-  // --- UI HELPERS ---
+  // --- UI Helpers ---
 
-  Widget _buildMentorHeader() {
-    return Column(
-      children: [
-        const CircleAvatar(
-          radius: 60,
-          backgroundImage: NetworkImage('https://i.pravatar.cc/150?img=32'),
-        ),
-        const SizedBox(height: 16),
-        const Text(
-          "Dr. Sarah James",
-          style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: -1),
-        ),
-        const SizedBox(height: 4),
-        const Text(
-          "Senior Career Strategist",
-          style: TextStyle(color: AppTheme.mentor, fontWeight: FontWeight.bold, fontSize: 14),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(5, (index) => const Icon(Icons.star_rounded, color: Colors.orange, size: 18)),
-        ),
-      ],
-    );
+  Widget _buildMentorHeader(String name, String role) {
+    return Column(children: [
+      const CircleAvatar(
+        radius: 60,
+        backgroundColor: Color(0xFFE0E0E0),
+        backgroundImage: NetworkImage('https://i.pravatar.cc/150?img=32'),
+      ),
+      const SizedBox(height: 16),
+      Text(name, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: -1)),
+      const SizedBox(height: 4),
+      Text(role, style: const TextStyle(color: AppTheme.mentor, fontWeight: FontWeight.bold, fontSize: 14)),
+      const SizedBox(height: 8),
+      Row(mainAxisAlignment: MainAxisAlignment.center, children: List.generate(5, (index) => const Icon(Icons.star_rounded, color: Colors.orange, size: 18))),
+    ]);
   }
 
-  Widget _buildImpactBar() {
+  Widget _buildImpactBar(String rating, String exp) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 20)],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          _buildStatColumn("120", "Students"),
-          _buildVerticalDivider(),
-          _buildStatColumn("4.9", "Rating"),
-          _buildVerticalDivider(),
-          _buildStatColumn("8yrs", "Exp."),
-        ],
-      ),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 20)]),
+      child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+        _buildStatColumn("120", "Students"),
+        _buildVerticalDivider(),
+        _buildStatColumn(rating, "Rating"),
+        _buildVerticalDivider(),
+        _buildStatColumn("${exp}yrs", "Exp."),
+      ]),
     );
   }
 
   Widget _buildStatColumn(String value, String label) {
-    return Column(
-      children: [
-        Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.black87)),
-        const SizedBox(height: 2),
-        Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
-      ],
-    );
+    return Column(children: [
+      Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.black87)),
+      const SizedBox(height: 2),
+      Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
+    ]);
   }
 
-  Widget _buildVerticalDivider() {
-    return Container(height: 30, width: 1, color: Colors.grey.withOpacity(0.2));
-  }
+  Widget _buildVerticalDivider() => Container(height: 30, width: 1, color: Colors.grey.withOpacity(0.2));
 
   Widget _buildTechChip(String label) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppTheme.mentor.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: AppTheme.mentor.withOpacity(0.1)),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(color: AppTheme.mentor, fontWeight: FontWeight.bold, fontSize: 12),
-      ),
+      decoration: BoxDecoration(color: AppTheme.mentor.withOpacity(0.08), borderRadius: BorderRadius.circular(30), border: Border.all(color: AppTheme.mentor.withOpacity(0.1))),
+      child: Text(label, style: const TextStyle(color: AppTheme.mentor, fontWeight: FontWeight.bold, fontSize: 12)),
     );
   }
 
   Widget _buildSectionHeader(String title) {
     return Padding(
       padding: const EdgeInsets.only(left: 4, bottom: 12),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Text(
-          title.toUpperCase(),
-          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: Colors.grey, letterSpacing: 1.2),
-        ),
-      ),
+      child: Align(alignment: Alignment.centerLeft, child: Text(title.toUpperCase(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: Colors.grey, letterSpacing: 1.2))),
     );
   }
 
-  Widget _buildProfileCard(List<Widget> children) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Column(children: children),
-    );
-  }
+  Widget _buildProfileCard(List<Widget> children) => Container(width: double.infinity, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24)), child: Column(children: children));
 
   Widget _buildInfoTile(IconData icon, String label, String value, {Color? textColor}) {
     return ListTile(
@@ -1216,9 +1753,7 @@ class MentorProfile extends StatelessWidget {
     );
   }
 
-  Widget _buildDivider() {
-    return Divider(height: 1, indent: 60, endIndent: 20, color: Colors.grey.withOpacity(0.1));
-  }
+  Widget _buildDivider() => Divider(height: 1, indent: 60, endIndent: 20, color: Colors.grey.withOpacity(0.1));
 }
 
 ================================================================================
@@ -2018,6 +2553,275 @@ class _TokenCheckScreenState extends State<TokenCheckScreen> {
 }
 
 ================================================================================
+FILE: screens\ai_recommendations_screen.dart
+================================================================================
+
+import 'package:flutter/material.dart';
+import '../services/assessment_service.dart';
+import '../theme/app_theme.dart'; // ✅ Make sure this path points to your AppTheme
+
+class AIRecommendationsScreen extends StatefulWidget {
+  final Map<String, dynamic> aiData;
+  final AssessmentService apiService;
+
+  const AIRecommendationsScreen({
+    super.key,
+    required this.aiData,
+    required this.apiService,
+  });
+
+  @override
+  State<AIRecommendationsScreen> createState() => _AIRecommendationsScreenState();
+}
+
+class _AIRecommendationsScreenState extends State<AIRecommendationsScreen> {
+  bool _isSelecting = false;
+
+  void _handleCareerSelection(String title) async {
+    setState(() => _isSelecting = true);
+
+    bool success = await widget.apiService.selectCareer(title);
+
+    if (mounted) {
+      setState(() => _isSelecting = false);
+      if (success) {
+        Navigator.pop(context, title);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Failed to save selection. Try again."), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final List<dynamic> options = widget.aiData['top_5_careers'] ?? [];
+    final String brutalTruth = widget.aiData['brutal_truth_summary'] ?? "Here is your personalized roadmap based on your assessment.";
+
+    return Scaffold(
+      extendBodyBehindAppBar: true, // Lets the gradient flow behind the appbar
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        centerTitle: true,
+        iconTheme: const IconThemeData(color: AppTheme.textPrimary),
+        title: const Text(
+          "YOUR ROADMAP",
+          style: TextStyle(
+            color: AppTheme.textMuted,
+            fontSize: 12,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 2,
+          ),
+        ),
+      ),
+      body: Stack(
+        children: [
+          // 1. Beautiful Background matching your theme
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [AppTheme.backgroundTop, AppTheme.backgroundMid],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+            ),
+            width: double.infinity,
+            height: double.infinity,
+          ),
+
+          SafeArea(
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Recommended\nCareer Paths",
+                    style: AppTheme.heading.copyWith(fontSize: 36), // Using your custom heading
+                  ),
+                  const SizedBox(height: 24),
+
+                  // 2. The Restyled "Profile Analysis" Report
+                  Container(
+                    decoration: BoxDecoration(
+                      color: AppTheme.surface,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.student.withOpacity(0.08),
+                          blurRadius: 24,
+                          offset: const Offset(0, 8),
+                        )
+                      ],
+                      border: Border.all(color: Colors.white, width: 2), // Glassmorphism touch
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Accent header bar
+                          Container(
+                            height: 4,
+                            width: double.infinity,
+                            color: AppTheme.student,
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(10),
+                                      decoration: const BoxDecoration(
+                                        color: AppTheme.studentBg,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(Icons.analytics_rounded, color: AppTheme.student, size: 22),
+                                    ),
+                                    const SizedBox(width: 14),
+                                    const Text(
+                                      "Profile Analysis",
+                                      style: TextStyle(
+                                        color: AppTheme.textPrimary,
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 18,
+                                        letterSpacing: -0.5,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  brutalTruth,
+                                  style: AppTheme.subheading.copyWith(
+                                    height: 1.6,
+                                    fontSize: 14.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 35),
+                  const Text(
+                    "SELECT YOUR TARGET",
+                    style: TextStyle(
+                      color: AppTheme.textMuted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // 3. Themed Career Cards
+                  ...options.map((career) => _buildPremiumCareerCard(
+                    career['title'],
+                    career['rationale'],
+                  )),
+
+                  const SizedBox(height: 40),
+                ],
+              ),
+            ),
+          ),
+
+          // Loading Overlay
+          if (_isSelecting)
+            Container(
+              color: AppTheme.backgroundMid.withOpacity(0.8),
+              child: const Center(
+                child: CircularProgressIndicator(color: AppTheme.primary),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPremiumCareerCard(String title, String description) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.textSecondary.withOpacity(0.05),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
+        border: Border.all(color: AppTheme.studentBg, width: 1.5), // Subtle student-themed border
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          highlightColor: AppTheme.studentBg.withOpacity(0.5),
+          splashColor: AppTheme.studentBg,
+          onTap: () => _handleCareerSelection(title),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Themed Icon
+                Container(
+                  height: 48,
+                  width: 48,
+                  decoration: const BoxDecoration(
+                    color: AppTheme.studentBg,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.rocket_launch_rounded, color: AppTheme.student, size: 22),
+                ),
+                const SizedBox(width: 16),
+
+                // Content using AppTheme
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: AppTheme.cardTitle.copyWith(color: AppTheme.textPrimary),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        description,
+                        style: AppTheme.cardSubtitle,
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Arrow
+                const Padding(
+                  padding: EdgeInsets.only(top: 8.0, left: 8.0),
+                  child: Icon(Icons.arrow_forward_ios_rounded, size: 16, color: AppTheme.student),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+================================================================================
 FILE: screens\aptitude_result_screen.dart
 ================================================================================
 
@@ -2676,6 +3480,7 @@ FILE: screens\link_ward_screen.dart
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../dashboards/parent_dashboard.dart';
+import '../services/assessment_service.dart'; // ✅ Added required import
 
 class LinkWardScreen extends StatefulWidget {
   const LinkWardScreen({super.key});
@@ -2688,24 +3493,88 @@ class _LinkWardScreenState extends State<LinkWardScreen> {
   final TextEditingController _wardEmailController = TextEditingController();
   final TextEditingController _accessCodeController = TextEditingController();
 
-  void _handleLinkProfile() {
-    // Show a modern loading state
-    showGeneralDialog(
+  // ✅ Instantiate the service to handle API calls
+  final AssessmentService _apiService = AssessmentService();
+
+  /// Logic: Handles the linking process by validating input and calling the backend
+  void _handleLinkProfile() async {
+    final code = _accessCodeController.text.trim();
+
+    // 1. Basic Validation
+    if (code.isEmpty || code.length != 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Please enter a valid 6-digit code"),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    // 2. Show Modern Loading Dialog
+    showDialog(
       context: context,
       barrierDismissible: false,
-      pageBuilder: (_, __, ___) => const Center(
-        child: CircularProgressIndicator(color: AppTheme.parentTheme, strokeWidth: 3),
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(
+          color: AppTheme.parentTheme,
+          strokeWidth: 3,
+        ),
       ),
     );
 
-    Future.delayed(const Duration(seconds: 2), () {
-      Navigator.pop(context); // Close loader
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (context) => const ParentDashboard()),
-            (route) => false,
+    try {
+      // 3. Call the Backend API via AssessmentService
+      final result = await _apiService.linkStudentToParent(code);
+
+      if (!mounted) return;
+      Navigator.pop(context); // Close the loading dialog
+
+      // 4. Handle Success or Failure
+      if (result['success'] == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Successfully linked!"),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+
+        // 5. Navigate to Parent Dashboard and clear navigation stack
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const ParentDashboard()),
+              (route) => false,
+        );
+      } else {
+        // Display backend error message (e.g., "Invalid invite code")
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message'] ?? "Linking failed"),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context); // Close loader on exception
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("An error occurred: $e"),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+        ),
       );
-    });
+    }
+  }
+
+  @override
+  void dispose() {
+    _wardEmailController.dispose();
+    _accessCodeController.dispose();
+    super.dispose();
   }
 
   @override
@@ -2731,13 +3600,10 @@ class _LinkWardScreenState extends State<LinkWardScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 20),
-
-                // 1. CUSTOM BACK BUTTON
                 _buildBackButton(),
-
                 const SizedBox(height: 40),
 
-                // 2. HEADER WITH ACCENT
+                // Header Section
                 Stack(
                   children: [
                     Positioned(
@@ -2773,7 +3639,7 @@ class _LinkWardScreenState extends State<LinkWardScreen> {
 
                 const SizedBox(height: 45),
 
-                // 3. INPUTS WITH NEUMORPHIC STYLE
+                // Inputs Section
                 _buildInputLabel("Ward's Registered Email"),
                 _buildInputField(
                   hint: "alex@email.com",
@@ -2793,7 +3659,7 @@ class _LinkWardScreenState extends State<LinkWardScreen> {
 
                 const SizedBox(height: 20),
 
-                // 4. GLASS-STYLE INFO CARD
+                // Instruction Card
                 Container(
                   padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
@@ -2811,7 +3677,7 @@ class _LinkWardScreenState extends State<LinkWardScreen> {
                       const SizedBox(width: 15),
                       const Expanded(
                         child: Text(
-                          "Alex can find this code in their Profile > Settings > Family Link.",
+                          "Your ward can find this code in their Profile > Settings > Family Link.",
                           style: TextStyle(color: Colors.black54, fontSize: 13, height: 1.4, fontWeight: FontWeight.w500),
                         ),
                       ),
@@ -2821,7 +3687,6 @@ class _LinkWardScreenState extends State<LinkWardScreen> {
 
                 const SizedBox(height: 60),
 
-                // 5. THE MAIN ACTION BUTTON
                 _buildVerifyButton(),
 
                 const SizedBox(height: 20),
@@ -2848,7 +3713,7 @@ class _LinkWardScreenState extends State<LinkWardScreen> {
     );
   }
 
-  // --- UI COMPONENTS ---
+  // --- UI COMPONENTS (UNCHANGED DESIGN) ---
 
   Widget _buildBackButton() {
     return GestureDetector(
@@ -2886,7 +3751,8 @@ class _LinkWardScreenState extends State<LinkWardScreen> {
       ),
       child: TextField(
         controller: controller,
-        keyboardType: isCode ? TextInputType.number : TextInputType.emailAddress,
+        textCapitalization: TextCapitalization.characters, // ✅ Auto-capitalize for invite codes
+        keyboardType: isCode ? TextInputType.text : TextInputType.emailAddress,
         maxLength: isCode ? 6 : null,
         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         decoration: InputDecoration(
@@ -2939,6 +3805,8 @@ import '../dashboards/student_dashboard.dart';
 import '../dashboards/parent_dashboard.dart';
 import '../dashboards/mentor_dashboard.dart';
 import '../services/auth_service.dart';
+import '../screens/link_ward_screen.dart';
+import '../services/assessment_service.dart';
 
 class LoginScreen extends StatefulWidget {
   final String role;
@@ -3076,22 +3944,55 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  void _navigateToDashboard() {
+  // ✅ ADD 'async' here
+  void _navigateToDashboard() async {
     Widget nextScreen;
+
     if (widget.role == "Student") {
       nextScreen = const StudentDashboard();
-    } else if (widget.role == "Parent") {
-      nextScreen = const ParentDashboard();
-    } else if (widget.role == "Mentor") {
+    }
+    else if (widget.role == "Parent") {
+      final AssessmentService apiService = AssessmentService();
+
+      // Show a loading indicator while checking status
+      showDialog(
+          context: context,
+          barrierDismissible: false, // Prevents user from tapping away
+          builder: (context) => const Center(child: CircularProgressIndicator())
+      );
+
+      try {
+        // ✅ This MUST be awaited to get the real result from PostgreSQL
+        final status = await apiService.getLinkedStudentStatus();
+
+        if (!mounted) return;
+        Navigator.pop(context); // Close the loading dialog
+
+        if (status['is_linked'] == true) {
+          nextScreen = const ParentDashboard();
+        } else {
+          nextScreen = const LinkWardScreen();
+        }
+      } catch (e) {
+        if (!mounted) return;
+        Navigator.pop(context);
+        _showSnackBar("Session error: Please link your ward manually.", Colors.orange);
+        nextScreen = const LinkWardScreen();
+      }
+    }
+    else if (widget.role == "Mentor") {
       nextScreen = const MentorDashboard();
     } else {
       return;
     }
 
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => nextScreen),
-    );
+    // Final navigation
+    if (mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => nextScreen),
+      );
+    }
   }
 
   @override
@@ -3310,73 +4211,477 @@ class _LoginScreenState extends State<LoginScreen> {
 }
 
 ================================================================================
-FILE: screens\mentor_list_screen.dart
+FILE: screens\mentor_chat_screen.dart.dart
 ================================================================================
 
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
-class MentorListScreen extends StatelessWidget {
-  const MentorListScreen({super.key});
+class MentorChatScreen extends StatefulWidget {
+  const MentorChatScreen({super.key});
 
-  final List<Map<String, String>> assignedMentors = const [
-    {
-      "name": "Dr. Sarah James",
-      "role": "Software Engineering Expert",
-      "image": "https://i.pravatar.cc/150?img=32",
-      "rating": "4.9",
-      "sessions": "12 Sessions"
-    },
-    {
-      "name": "Prof. Mike Wheeler",
-      "role": "Cybersecurity Specialist",
-      "image": "https://i.pravatar.cc/150?img=60",
-      "rating": "4.8",
-      "sessions": "8 Sessions"
-    },
+  @override
+  State<MentorChatScreen> createState() => _MentorChatScreenState();
+}
+
+class _MentorChatScreenState extends State<MentorChatScreen> {
+  bool _isViewingIndividualChat = false;
+  String _currentChatPartner = "";
+
+  // Mock data for requests - empty list to test "No requests" state
+  final List<Map<String, String>> _pendingRequests = [
+    {"name": "Yash Choudhary", "subject": "Python Core", "img": "5"},
+    {"name": "Ananya Singh", "subject": "UI/UX Design", "img": "9"},
+  ];
+
+  final List<Map<String, String>> _mockChats = [
+    {"name": "Aditi Malviya", "msg": "Can we discuss the Java roadmap?", "time": "10:30 AM", "img": "10", "unread": "1"},
+    {"name": "Mridul Bhardwaj", "msg": "Sent the assignment tasks.", "time": "Yesterday", "img": "12", "unread": "0"},
+    {"name": "Aryan Verma", "msg": "Thank you for the guidance!", "time": "9:15 AM", "img": "15", "unread": "0"},
   ];
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FBFF),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        centerTitle: true,
-        title: const Text(
-          "My Mentors",
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900),
-        ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ), // Fixed: Removed the extra ], that was here
-      body: ListView.builder(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-        itemCount: assignedMentors.length,
-        itemBuilder: (context, index) {
-          final mentor = assignedMentors[index];
-          return _buildMentorProfessionalCard(context, mentor);
-        },
+    return WillPopScope(
+      onWillPop: () async {
+        if (_isViewingIndividualChat) {
+          setState(() => _isViewingIndividualChat = false);
+          return false;
+        }
+        return true;
+      },
+      child: Scaffold(
+        backgroundColor: _isViewingIndividualChat ? const Color(0xFFE5DDD5) : Colors.white, // Classic Chat BG
+        appBar: _isViewingIndividualChat ? _buildChatDetailAppBar() : _buildChatListAppBar(),
+        body: _isViewingIndividualChat ? _buildIndividualChatView() : _buildChatListView(),
       ),
     );
   }
 
-  Widget _buildMentorProfessionalCard(BuildContext context, Map<String, String> mentor) {
+  // --- 1. APP BARS ---
+
+  PreferredSizeWidget _buildChatListAppBar() {
+    return AppBar(
+      backgroundColor: Colors.white,
+      elevation: 0,
+      title: const Text("Messages",
+          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 28)),
+      actions: [
+        Stack(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.person_add_outlined, color: Colors.black87, size: 28),
+              onPressed: () => _showRequestsOverlay(context),
+            ),
+            if (_pendingRequests.isNotEmpty)
+              Positioned(
+                right: 8,
+                top: 8,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                  child: Text("${_pendingRequests.length}", style: const TextStyle(color: Colors.white, fontSize: 10)),
+                ),
+              )
+          ],
+        ),
+        const SizedBox(width: 8),
+      ],
+    );
+  }
+
+  PreferredSizeWidget _buildChatDetailAppBar() {
+    return AppBar(
+      backgroundColor: Colors.white,
+      elevation: 1,
+      titleSpacing: 0,
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back, color: Colors.black),
+        onPressed: () => setState(() => _isViewingIndividualChat = false),
+      ),
+      title: Row(
+        children: [
+          CircleAvatar(radius: 18, backgroundImage: NetworkImage('https://i.pravatar.cc/150?u=$_currentChatPartner')),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(_currentChatPartner, style: const TextStyle(color: Colors.black, fontSize: 16, fontWeight: FontWeight.bold)),
+                const Text("online", style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.w400)),
+              ],
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        IconButton(icon: const Icon(Icons.videocam_rounded, color: AppTheme.mentor), onPressed: () {}),
+        IconButton(icon: const Icon(Icons.call, color: AppTheme.mentor, size: 22), onPressed: () {}),
+        const SizedBox(width: 8),
+      ],
+    );
+  }
+
+  // --- 2. CHAT LIST ---
+
+  Widget _buildChatListView() {
+    return Column(
+      children: [
+        const Divider(height: 1),
+        Expanded(
+          child: ListView.builder(
+            itemCount: _mockChats.length,
+            itemBuilder: (context, index) {
+              final chat = _mockChats[index];
+              return ListTile(
+                leading: CircleAvatar(radius: 28, backgroundImage: NetworkImage('https://i.pravatar.cc/150?img=${chat['img']}')),
+                title: Text(chat['name']!, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 17)),
+                subtitle: Text(chat['msg']!, maxLines: 1, overflow: TextOverflow.ellipsis),
+                trailing: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(chat['time']!, style: TextStyle(color: chat['unread'] == "1" ? AppTheme.mentor : Colors.grey, fontSize: 12)),
+                    const SizedBox(height: 5),
+                    if (chat['unread'] == "1")
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: const BoxDecoration(color: AppTheme.mentor, shape: BoxShape.circle),
+                        child: const Text("1", style: TextStyle(color: Colors.white, fontSize: 10)),
+                      ),
+                  ],
+                ),
+                onTap: () => setState(() {
+                  _isViewingIndividualChat = true;
+                  _currentChatPartner = chat['name']!;
+                }),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  // --- 3. INDIVIDUAL CHAT VIEW ---
+
+  Widget _buildIndividualChatView() {
+    return Container(
+      decoration: const BoxDecoration(
+        image: DecorationImage(
+          image: NetworkImage("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png"),
+          opacity: 0.06, // Subtle WhatsApp-like pattern
+          fit: BoxFit.cover,
+        ),
+      ),
+      child: Column(
+        children: [
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                _buildMessageBubble("Hi Mentor, I have a doubt regarding the roadmap.", false),
+                _buildMessageBubble("Sure, let's discuss. Which part is confusing?", true),
+                _buildMessageBubble("The section on System Design seems a bit advanced.", false),
+                _buildMessageBubble("Don't worry, we'll break it down. Let's hop on a VC.", true),
+              ],
+            ),
+          ),
+          _buildMessageInput(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMessageBubble(String text, bool isMe) {
+    return Align(
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+        decoration: BoxDecoration(
+          color: isMe ? const Color(0xFFDCF8C6) : Colors.white, // WhatsApp green vs white
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(12),
+            topRight: const Radius.circular(12),
+            bottomLeft: Radius.circular(isMe ? 12 : 0),
+            bottomRight: Radius.circular(isMe ? 0 : 12),
+          ),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 2, offset: const Offset(0, 1))],
+        ),
+        child: Text(text, style: const TextStyle(color: Colors.black87, fontSize: 16)),
+      ),
+    );
+  }
+
+  Widget _buildMessageInput() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: Card(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 12),
+                child: TextField(
+                  decoration: InputDecoration(
+                    hintText: "Type a message",
+                    border: InputBorder.none,
+                    prefixIcon: Icon(Icons.emoji_emotions_outlined, color: Colors.grey),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 5),
+          const CircleAvatar(
+            backgroundColor: AppTheme.mentor,
+            radius: 25,
+            child: Icon(Icons.mic, color: Colors.white),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- 4. REQUESTS OVERLAY ---
+
+  void _showRequestsOverlay(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.6,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+        ),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
+            const SizedBox(height: 20),
+            const Text("Student Requests", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 20),
+
+            // ✅ CONDITIONAL RENDERING FOR NO REQUESTS
+            _pendingRequests.isEmpty
+                ? Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons. drafts_outlined, size: 80, color: Colors.grey[300]),
+                    const SizedBox(height: 10),
+                    const Text("No pending requests", style: TextStyle(color: Colors.grey, fontSize: 16)),
+                  ],
+                ),
+              ),
+            )
+                : Expanded(
+              child: ListView.builder(
+                itemCount: _pendingRequests.length,
+                itemBuilder: (context, index) {
+                  final req = _pendingRequests[index];
+                  return ListTile(
+                    contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                    leading: CircleAvatar(radius: 25, backgroundImage: NetworkImage('https://i.pravatar.cc/150?img=${req['img']}')),
+                    title: Text(req['name']!, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text("Wants help with ${req['subject']}"),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.check_circle, color: Colors.green, size: 32),
+                          onPressed: () {
+                            // Add logic to move to chat list
+                            Navigator.pop(context);
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.cancel, color: Colors.redAccent, size: 32),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+================================================================================
+FILE: screens\mentor_list_screen.dart
+================================================================================
+
+import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
+import '../services/assessment_service.dart';
+
+class MentorListScreen extends StatefulWidget {
+  const MentorListScreen({super.key});
+
+  @override
+  State<MentorListScreen> createState() => _MentorListScreenState();
+}
+
+class _MentorListScreenState extends State<MentorListScreen> {
+  final AssessmentService _apiService = AssessmentService();
+  List<dynamic> _allMentors = [];
+  bool _isLoading = true;
+
+  // ✅ Local state to track sent requests
+  final Set<String> _sentRequestIds = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchInitialData();
+  }
+
+  Future<void> _fetchInitialData() async {
+    try {
+      final profile = await _apiService.getUserProfile();
+      final aspiration = profile['aspiration_data'] ?? {};
+      String goal = aspiration['dream_career'] ?? "technology";
+
+      // 1. Fetch all recommended mentors
+      final data = await _apiService.searchMentors(careerGoal: goal);
+
+      // 2. Fetch existing connections/requests from backend to persist state [cite: 41, 45]
+      // This ensures that even after logout/login, requested mentors remain in 'Requested' state
+      final existingConnections = await _apiService.getSentRequests();
+
+      if (mounted) {
+        setState(() {
+          _allMentors = data;
+
+          // 3. Populate requested set from DB records [cite: 47, 48]
+          for (var conn in existingConnections) {
+            String? mId = conn['user_id']?.toString();
+            if (mId != null) {
+              _sentRequestIds.add(mId);
+            }
+          }
+
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("❌ Error fetching mentors: $e");
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF8FBFF),
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0.5,
+          centerTitle: true,
+          title: const Text(
+            "Mentorship",
+            style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900),
+          ),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black, size: 20),
+            onPressed: () => Navigator.pop(context),
+          ),
+          bottom: TabBar(
+            indicatorColor: AppTheme.student,
+            labelColor: AppTheme.student,
+            unselectedLabelColor: Colors.grey,
+            labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            tabs: const [
+              Tab(text: "ALL MENTORS"),
+              Tab(text: "MY MENTORS"),
+            ],
+          ),
+        ),
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator(color: AppTheme.student))
+            : TabBarView(
+          children: [
+            _buildAllMentorsTab(),
+            _buildMyMentorsTab(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAllMentorsTab() {
+    if (_allMentors.isEmpty) {
+      return const Center(child: Text("No mentors found matching your goals."));
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+      itemCount: _allMentors.length,
+      itemBuilder: (context, index) {
+        final m = _allMentors[index];
+        final String mentorId = m['id'].toString(); // ✅ Unique ID
+        final bool isRequested = _sentRequestIds.contains(mentorId);
+
+        return _buildMentorProfessionalCard(
+          context,
+          {
+            "id": mentorId,
+            "name": m['full_name'] ?? "Expert",
+            "role": m['expertise'] ?? "Professional",
+            "image": 'https://i.pravatar.cc/150?u=$mentorId',
+            "rating": (m['rating'] ?? 0.0).toString(),
+            "sessions": "${m['years_experience']} Yrs Exp."
+          },
+          isMyMentorTab: false,
+          isRequested: isRequested,
+        );
+      },
+    );
+  }
+
+  Widget _buildMyMentorsTab() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.people_outline_rounded, size: 80, color: Colors.grey.shade300),
+          const SizedBox(height: 16),
+          const Text(
+            "No mentors assigned yet",
+            style: TextStyle(
+              color: Colors.grey,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMentorProfessionalCard(
+      BuildContext context,
+      Map<String, String> mentor,
+      {required bool isMyMentorTab, bool isRequested = false}
+      ) {
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(28),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 20, offset: const Offset(0, 10))],
       ),
       child: Column(
         children: [
@@ -3384,57 +4689,25 @@ class MentorListScreen extends StatelessWidget {
             padding: const EdgeInsets.all(20),
             child: Row(
               children: [
-                Stack(
-                  children: [
-                    CircleAvatar(
-                      radius: 35,
-                      backgroundImage: NetworkImage(mentor['image']!),
-                    ),
-                    Positioned(
-                      bottom: 2,
-                      right: 2,
-                      child: Container(
-                        width: 14,
-                        height: 14,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF00FFC2),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                CircleAvatar(radius: 35, backgroundImage: NetworkImage(mentor['image']!)),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        mentor['name']!,
-                        style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
-                      ),
+                      Text(mentor['name']!, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
                       const SizedBox(height: 4),
-                      Text(
-                        mentor['role']!,
-                        style: TextStyle(color: Colors.grey.shade600, fontSize: 13, fontWeight: FontWeight.w500),
-                      ),
+                      Text(mentor['role']!, style: TextStyle(color: Colors.grey.shade600, fontSize: 13, fontWeight: FontWeight.w500)),
                       const SizedBox(height: 8),
                       Row(
                         children: [
                           const Icon(Icons.star_rounded, color: Colors.orange, size: 16),
                           const SizedBox(width: 4),
-                          Text(
-                            mentor['rating']!,
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                          ),
+                          Text(mentor['rating']!, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                           const SizedBox(width: 12),
                           const Icon(Icons.history_edu_rounded, color: Colors.grey, size: 16),
                           const SizedBox(width: 4),
-                          Text(
-                            mentor['sessions']!,
-                            style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold),
-                          ),
+                          Text(mentor['sessions']!, style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
                         ],
                       ),
                     ],
@@ -3445,16 +4718,13 @@ class MentorListScreen extends StatelessWidget {
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            decoration: const BoxDecoration(
-              color: Color(0xFFF5F9FF),
-              borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
-            ),
+            decoration: const BoxDecoration(color: Color(0xFFF5F9FF), borderRadius: BorderRadius.vertical(bottom: Radius.circular(28))),
             child: Row(
               children: [
                 Expanded(
                   child: _buildActionButton(
-                    icon: Icons.calendar_today_outlined,
-                    label: "Request Session",
+                    icon: isMyMentorTab ? Icons.calendar_today_outlined : Icons.person_outline_rounded,
+                    label: isMyMentorTab ? "Request Session" : "View Profile",
                     color: AppTheme.student,
                     onTap: () {},
                   ),
@@ -3462,12 +4732,50 @@ class MentorListScreen extends StatelessWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: _buildActionButton(
-                    icon: Icons.chat_bubble_outline_rounded,
-                    label: "Chat Now",
-                    color: Colors.white,
-                    textColor: AppTheme.student,
-                    isOutlined: true,
-                    onTap: () {},
+                    // ✅ Button UI changes based on request status
+                    icon: isMyMentorTab
+                        ? Icons.chat_bubble_outline_rounded
+                        : (isRequested ? Icons.check_circle_outline_rounded : Icons.add_task_rounded),
+                    label: isMyMentorTab
+                        ? "Chat Now"
+                        : (isRequested ? "Requested" : "Request Mentorship"),
+                    color: isRequested ? Colors.grey.shade400 : Colors.white,
+                    textColor: isRequested ? Colors.white : AppTheme.student,
+                    isOutlined: !isRequested,
+                    onTap: () async {
+                      if (!isMyMentorTab && !isRequested) {
+                        // 1. Call the backend service [cite: 109]
+                        final bool success = await _apiService.requestMentorship(mentor['id']!);
+
+                        if (success) {
+                          // 2. If successful, update local UI state
+                          setState(() {
+                            _sentRequestIds.add(mentor['id']!);
+                          });
+
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text("Mentorship request sent successfully!"),
+                                backgroundColor: Colors.green,
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          }
+                        } else {
+                          // Handle failure (e.g., duplicate request error from backend )
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text("Failed to send request. You may already have a pending request."),
+                                backgroundColor: Colors.red,
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          }
+                        }
+                      }
+                    },
                   ),
                 ),
               ],
@@ -3500,10 +4808,7 @@ class MentorListScreen extends StatelessWidget {
           children: [
             Icon(icon, size: 18, color: textColor),
             const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 13),
-            ),
+            Text(label, style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 13)),
           ],
         ),
       ),
@@ -4581,11 +5886,47 @@ FILE: screens\student_setting_screen.dart
 ================================================================================
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../theme/app_theme.dart';
 import '../services/token_service.dart';
-import '../routes/app_routes.dart';      // <-- ADD THIS
-class StudentSettingScreen extends StatelessWidget {
+import '../routes/app_routes.dart';
+import '../services/assessment_service.dart'; // Ensure this is imported for API logic [cite: 7, 146]
+
+class StudentSettingScreen extends StatefulWidget {
   const StudentSettingScreen({super.key});
+
+  @override
+  State<StudentSettingScreen> createState() => _StudentSettingScreenState();
+}
+
+class _StudentSettingScreenState extends State<StudentSettingScreen> {
+  // Logic: Initialize service and dynamic variable
+  final AssessmentService _apiService = AssessmentService();
+  String _inviteCode = "Loading...";
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchInviteCode();
+  }
+
+  // Logic: Fetch the actual code from the PostgreSQL backend
+  Future<void> _fetchInviteCode() async {
+    try {
+      final code = await _apiService.getStudentInviteCode();
+      if (mounted) {
+        setState(() {
+          _inviteCode = code ?? "Unavailable";
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _inviteCode = "Error";
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -4612,8 +5953,19 @@ class StudentSettingScreen extends StatelessWidget {
               _buildSettingTile(
                 Icons.family_restroom_rounded,
                 "Family Link",
-                "Access Code: 655 420",
-                onTap: () {},
+                "Access Code: $_inviteCode", // ✅ UI uses dynamic variable from state
+                onTap: () {
+                  // Logic: Copy to clipboard if code is valid
+                  if (_inviteCode != "Loading..." && _inviteCode != "Unavailable" && _inviteCode != "Error") {
+                    Clipboard.setData(ClipboardData(text: _inviteCode));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text("Invite code copied to clipboard!"),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                },
                 trailing: const Icon(Icons.copy_rounded, size: 18, color: Colors.grey),
               ),
               _buildDivider(),
@@ -4658,8 +6010,9 @@ class StudentSettingScreen extends StatelessWidget {
               ),
               child: ListTile(
                 onTap: () async {
+                  // Logic: Persistent session clearing [cite: 839, 840, 1058]
                   await TokenService.clearToken();
-                  if (context.mounted) {
+                  if (mounted) {
                     Navigator.pushNamedAndRemoveUntil(context, AppRoutes.landing, (route) => false);
                   }
                 },
@@ -4674,7 +6027,7 @@ class StudentSettingScreen extends StatelessWidget {
     );
   }
 
-  // --- UI HELPERS ---
+  // --- UI HELPERS (Structure remains identical to your design) ---
 
   Widget _buildSectionLabel(String label) {
     return Padding(
@@ -4726,6 +6079,8 @@ import '../theme/app_theme.dart';
 import '../services/assessment_service.dart';
 import 'question_screen.dart';
 import '../screens/aptitude_result_screen.dart';
+import '../screens/ai_recommendations_screen.dart';
+import '../dashboards/roadmap_dashboard.dart'; //
 
 class StudentTestScreen extends StatefulWidget {
   const StudentTestScreen({super.key});
@@ -4739,6 +6094,8 @@ class _StudentTestScreenState extends State<StudentTestScreen> {
 
   int currentStep = 0;
   bool _isLoadingProgress = true; // ✅ ADDED: The missing variable
+  bool _isGeneratingRoadmap = false;
+  bool _hasActiveRoadmap = false; // ✅ Tracks if roadmap exists in DB
   String? selectedCareer;
   String? studentCurrentClass;
 
@@ -4761,15 +6118,50 @@ class _StudentTestScreenState extends State<StudentTestScreen> {
     _loadUserProgress();
   }
 
+  // ✅ ADD THIS METHOD to handle the API call
+  Future<void> _handleGenerateRoadmap() async {
+    if (selectedCareer == null) return;
+
+    setState(() => _isGeneratingRoadmap = true);
+
+    try {
+      final roadmap = await _apiService.generateAndSaveRoadmap(selectedCareer!);
+
+      if (!mounted) return;
+      setState(() => _isGeneratingRoadmap = false);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Success! ${roadmap['total_duration']} Roadmap created."),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      // TODO: Navigate to your Roadmap Dashboard here!
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => RoadmapDashboard()));
+
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isGeneratingRoadmap = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: ${e.toString()}"), backgroundColor: Colors.redAccent),
+      );
+    }
+  }
+
   // --- FETCH PROGRESS ON LOAD ---
   Future<void> _loadUserProgress() async {
     try {
+      // 1. Fetch the general assessment progress
       final profile = await _apiService.getUserProfile();
       final progress = profile['progress'] ?? {};
 
+      // 2. ✅ NEW: Check if a roadmap already exists in the database
+      final roadmap = await _apiService.getCurrentRoadmap();
+
       int stepIndex = 0;
 
-      // Cascade check: advance the step if the previous one is done.
+      // Your existing cascade logic
       if (progress['profile_done'] == true || progress['basic_assessment_done'] == true) stepIndex = 1;
       if (stepIndex == 1 && progress['personality_done'] == true) stepIndex = 2;
       if (stepIndex == 2 && progress['passion_done'] == true) stepIndex = 3;
@@ -4782,7 +6174,14 @@ class _StudentTestScreenState extends State<StudentTestScreen> {
 
       if (mounted) {
         setState(() {
-          currentStep = stepIndex;
+          // 3. ✅ NEW: If a roadmap exists, force the index to the very end (Step 10)
+          if (roadmap != null) {
+            _hasActiveRoadmap = true;
+            selectedCareer = roadmap['title'];
+            currentStep = 10; // This ensures the 10th step gets the green tick
+          } else {
+            currentStep = stepIndex;
+          }
           _isLoadingProgress = false;
         });
       }
@@ -4883,8 +6282,23 @@ class _StudentTestScreenState extends State<StudentTestScreen> {
 
       if (!mounted) return;
       Navigator.pop(context); // Close loading dialog
+      // ✅ NEW: Navigate to the beautiful full screen instead of the bottom sheet
+      final selectedPath = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => AIRecommendationsScreen(
+            aiData: aiData,
+            apiService: _apiService,
+          ),
+        ),
+      );
 
-      _showCareerSelectionSheet(aiData);
+      // ✅ NEW: If they selected a career and came back, update the button UI
+      if (selectedPath != null && mounted) {
+        setState(() => selectedCareer = selectedPath as String);
+        // Advance currentStep to the last index so the "Generate" button becomes visible
+        setState(() => currentStep = steps.length - 1);
+      }
 
     } catch (e) {
       if (!mounted) return;
@@ -5002,8 +6416,11 @@ class _StudentTestScreenState extends State<StudentTestScreen> {
     );
   }
 
+  // ✅ REPLACED: Now calls backend and shows a loading spinner
   Widget _buildGenerateButton() {
-    bool isReady = selectedCareer != null;
+    // Ready if career is selected OR if roadmap is already active
+    bool isReady = (selectedCareer != null || _hasActiveRoadmap) && !_isGeneratingRoadmap;
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       width: double.infinity,
@@ -5025,20 +6442,29 @@ class _StudentTestScreenState extends State<StudentTestScreen> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: isReady
-              ? () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text("Roadmap generation started..."),
-                backgroundColor: AppTheme.student,
-              ),
-            );
-          }
-              : null,
+          onTap: isReady ? () {
+            if (_hasActiveRoadmap) {
+              // ✅ Redirect to roadmap if it already exists
+              Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const RoadmapDashboard()));
+            } else {
+              // ✅ Generate new roadmap
+              _handleGenerateRoadmap();
+            }
+          } : null,
           borderRadius: BorderRadius.circular(22),
           child: Center(
-            child: Text(
-              "GENERATE MY ROADMAP",
+            child: _isGeneratingRoadmap
+                ? const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3)),
+                SizedBox(width: 12),
+                Text("ARCHITECTING PATH...", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14)),
+              ],
+            )
+                : Text(
+              // ✅ Dynamic text change
+              _hasActiveRoadmap ? "CONTINUE YOUR JOURNEY" : "GENERATE MY ROADMAP",
               style: TextStyle(
                 color: isReady ? Colors.white : AppTheme.student.withOpacity(0.5),
                 fontWeight: FontWeight.w900,
@@ -5053,8 +6479,9 @@ class _StudentTestScreenState extends State<StudentTestScreen> {
   }
 
   Widget _buildModernJourneyStep(int index, String title, String subtitle) {
-    bool isCompleted = index < currentStep;
-    bool isCurrent = index == currentStep;
+
+    bool isCompleted = index < currentStep || (index == 9 && _hasActiveRoadmap);
+    bool isCurrent = index == currentStep && !_hasActiveRoadmap;
     bool isLocked = index > currentStep;
 
     return IntrinsicHeight(
@@ -5162,79 +6589,6 @@ class _StudentTestScreenState extends State<StudentTestScreen> {
       ),
     );
   }
-
-  void _showCareerSelectionSheet(Map<String, dynamic> aiData) {
-    final List<dynamic> options = aiData['top_5_careers'] ?? [];
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        padding: const EdgeInsets.fromLTRB(28, 12, 28, 32),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(35)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
-            const SizedBox(height: 25),
-            const Text("AI Recommended Paths", style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
-            const SizedBox(height: 8),
-            Text(
-              aiData['brutal_truth_summary'] ?? "Select one to finalize your roadmap",
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey[600], fontWeight: FontWeight.w500, fontSize: 13),
-            ),
-            const SizedBox(height: 24),
-            ...options.map((career) => _buildCareerTile(
-                career['title'],
-                career['rationale']
-            )).toList(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCareerTile(String title, String category) {
-    return GestureDetector(
-      onTap: () async {
-        bool success = await _apiService.selectCareer(title);
-        if (success) {
-          setState(() => selectedCareer = title);
-          if (mounted) Navigator.pop(context);
-        }
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF8F9FB),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.grey.shade100),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.auto_awesome, color: AppTheme.student, size: 20),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-                  Text(category, style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.w500)),
-                ],
-              ),
-            ),
-            const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.grey),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 ================================================================================
@@ -5277,17 +6631,12 @@ class AssessmentService {
     if (classLower.contains("9") || classLower.contains("10") || classLower.contains("11")) return "9-11";
     return "9-11";
   }
-// --- FETCH USER PROFILE & PROGRESS ---
+
+  // --- FETCH USER PROFILE & PROGRESS ---
   Future<Map<String, dynamic>> getUserProfile() async {
-    // 1. Build the URL.
-    // IMPORTANT: Keep the trailing slash '/' at the end to prevent FastAPI 307 redirects!
     final url = "$baseUrl/api/v1/auth/users/me/";
-
     try {
-      // 2. Fetch the token (assuming you have your TokenService set up)
       final token = await TokenService.getToken();
-
-      // 3. Make the GET request
       final response = await http.get(
         Uri.parse(url),
         headers: {
@@ -5296,11 +6645,9 @@ class AssessmentService {
         },
       ).timeout(const Duration(seconds: 15));
 
-      // 4. Handle the response
       if (response.statusCode == 200) {
         return json.decode(response.body);
       } else {
-        // Print the exact backend error to the console to help with debugging
         debugPrint("Backend Error (${response.statusCode}): ${response.body}");
         throw Exception("Failed to load profile: ${response.statusCode}");
       }
@@ -5310,7 +6657,7 @@ class AssessmentService {
     }
   }
 
-  // --- 2. AI RECOMMENDATIONS ---
+  // --- AI RECOMMENDATIONS ---
   Future<Map<String, dynamic>> getAIRecommendations() async {
     final url = "$baseUrl/api/v1/ai/recommend";
     try {
@@ -5330,7 +6677,7 @@ class AssessmentService {
     }
   }
 
-  // --- 3. SELECT CAREER ---
+  // --- SELECT CAREER ---
   Future<bool> selectCareer(String careerTitle) async {
     final url = "$baseUrl/api/v1/ai/select-career";
     try {
@@ -5346,7 +6693,7 @@ class AssessmentService {
     }
   }
 
-  // --- 4. FETCH QUESTIONS ---
+  // --- FETCH QUESTIONS ---
   Future<Map<String, dynamic>> fetchQuestions(String uiTitle, {String? grade, String? currentClass}) async {
     final moduleName = moduleMapping[uiTitle] ?? uiTitle.toLowerCase();
     String url = "$baseUrl/api/v1/assessments/questions/$moduleName";
@@ -5369,7 +6716,7 @@ class AssessmentService {
     }
   }
 
-  // --- 5. SUBMIT ANSWERS ---
+  // --- SUBMIT ANSWERS ---
   Future<bool> submitAnswers(String uiTitle, Map<String, dynamic> answers) async {
     final moduleKey = moduleMapping[uiTitle] ?? uiTitle.toLowerCase();
     final url = "$baseUrl/api/v1/assessments/submit-generic";
@@ -5395,6 +6742,159 @@ class AssessmentService {
 
       return (response.statusCode == 200 || response.statusCode == 201);
     } catch (e) {
+      return false;
+    }
+  }
+
+  // --- GENERATE AND SAVE ROADMAP ---
+  Future<Map<String, dynamic>> generateAndSaveRoadmap(String careerTitle) async {
+    final headers = await _getHeaders();
+    try {
+      final genUrl = Uri.parse('$baseUrl/api/v1/roadmaps/generate?career=${Uri.encodeComponent(careerTitle)}');
+      final genRes = await http.get(genUrl, headers: headers).timeout(const Duration(seconds: 60));
+
+      if (genRes.statusCode != 200) {
+        throw Exception("Failed to generate roadmap: ${genRes.body}");
+      }
+      final roadmapData = json.decode(genRes.body);
+
+      final saveUrl = Uri.parse('$baseUrl/api/v1/roadmaps/save');
+      final saveRes = await http.post(saveUrl, headers: headers, body: json.encode(roadmapData)).timeout(const Duration(seconds: 15));
+
+      if (saveRes.statusCode != 201) {
+        throw Exception("Failed to save roadmap: ${saveRes.body}");
+      }
+
+      final startUrl = Uri.parse('$baseUrl/api/v1/roadmaps/start');
+      await http.post(startUrl, headers: headers).timeout(const Duration(seconds: 10));
+
+      return roadmapData;
+    } catch (e) {
+      debugPrint("❌ Roadmap Error: $e");
+      rethrow;
+    }
+  }
+
+  // --- GET CURRENT ROADMAP ---
+  Future<Map<String, dynamic>?> getCurrentRoadmap() async {
+    final url = "$baseUrl/api/v1/roadmaps/current";
+    try {
+      final response = await http.get(Uri.parse(url), headers: await _getHeaders()).timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200) return json.decode(response.body);
+      if (response.statusCode == 404) return null;
+      throw Exception("Failed to load roadmap");
+    } catch (e) {
+      throw Exception("Connection error: $e");
+    }
+  }
+
+  // --- TOGGLE TASK COMPLETION ---
+  Future<Map<String, dynamic>> toggleTaskCompletion(String taskId) async {
+    final url = "$baseUrl/api/v1/roadmaps/tasks/$taskId/complete";
+    try {
+      final response = await http.patch(Uri.parse(url), headers: await _getHeaders()).timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200) return json.decode(response.body);
+      throw Exception("Failed to update task");
+    } catch (e) {
+      throw Exception("Connection error: $e");
+    }
+  }
+
+  // --- PARENT/STUDENT LINKING ---
+  Future<String?> getStudentInviteCode() async {
+    final url = "$baseUrl/api/v1/students/invite-code";
+    try {
+      final response = await http.get(Uri.parse(url), headers: await _getHeaders());
+      if (response.statusCode == 200) return json.decode(response.body)['invite_code'];
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>> linkStudentToParent(String code) async {
+    final url = "$baseUrl/api/v1/parents/link-student";
+    try {
+      final response = await http.post(Uri.parse(url), headers: await _getHeaders(), body: json.encode({"invite_code": code}));
+      return {
+        "success": response.statusCode == 201 || response.statusCode == 200,
+        "message": json.decode(response.body)['detail'] ?? json.decode(response.body)['message'],
+      };
+    } catch (e) {
+      return {"success": false, "message": "Connection error: $e"};
+    }
+  }
+
+  Future<Map<String, dynamic>> getLinkedStudentStatus() async {
+    final url = "$baseUrl/api/v1/parents/linked-student";
+    try {
+      final response = await http.get(Uri.parse(url), headers: await _getHeaders()).timeout(const Duration(seconds: 15));
+      return response.statusCode == 200 ? json.decode(response.body) : {"is_linked": false, "student": null};
+    } catch (e) {
+      return {"is_linked": false, "error": e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> getProfileById(String userId) async {
+    final url = "$baseUrl/api/v1/auth/users/me?user_id=$userId";
+    final token = await TokenService.getToken();
+    final response = await http.get(Uri.parse(url), headers: {"Content-Type": "application/json", if (token != null) "Authorization": "Bearer $token"});
+    if (response.statusCode == 200) return json.decode(response.body);
+    throw Exception("Failed to load profile");
+  }
+
+  Future<Map<String, dynamic>?> getWardRoadmap(String studentId) async {
+    final url = "$baseUrl/api/v1/parent/roadmaps/$studentId";
+    final token = await TokenService.getToken();
+    try {
+      final response = await http.get(Uri.parse(url), headers: {"Content-Type": "application/json", if (token != null) "Authorization": "Bearer $token"});
+      if (response.statusCode == 200) return json.decode(response.body);
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // --- MENTORSHIP ---
+  Future<List<dynamic>> searchMentors({String careerGoal = "technology"}) async {
+    final token = await TokenService.getToken();
+    final url = Uri.parse('$baseUrl/api/v1/mentorship/search/?career_goal=${Uri.encodeComponent(careerGoal)}');
+    final response = await http.get(url, headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'});
+    return response.statusCode == 200 ? json.decode(response.body) : throw Exception('Failed to fetch mentors');
+  }
+
+  // Fetch sent requests/existing connections to persist UI state
+  Future<List<dynamic>> getSentRequests() async {
+    final url = Uri.parse('$baseUrl/api/v1/chat/connections');
+    try {
+      final response = await http.get(url, headers: await _getHeaders());
+      return response.statusCode == 200 ? json.decode(response.body) : [];
+    } catch (e) {
+      debugPrint("❌ Error fetching sent requests: $e");
+      return [];
+    }
+  }
+
+  Future<bool> requestMentorship(String mentorId) async {
+    final token = await TokenService.getToken();
+    final url = Uri.parse('$baseUrl/api/v1/connections/request');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          "mentor_id": mentorId,
+          "message": "I would like to request mentorship from you."
+        }),
+      ).timeout(const Duration(seconds: 15));
+
+      return response.statusCode == 201;
+    } catch (e) {
+      debugPrint("❌ Mentorship Request Error: $e");
       return false;
     }
   }
@@ -5599,6 +7099,117 @@ class AuthService {
 }
 
 ================================================================================
+FILE: services\chat_service.dart
+================================================================================
+
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:flutter/material.dart';
+import 'token_service.dart'; // Ensure this exists for auth
+
+class ChatService {
+  final String baseUrl = "http://127.0.0.1:8000"; // Update with your actual URL
+
+  Future<Map<String, String>> _getHeaders() async {
+    final token = await TokenService.getToken();
+    return {
+      "Content-Type": "application/json",
+      if (token != null) "Authorization": "Bearer $token",
+    };
+  }
+
+  // Fetch pending connection requests for the mentor [cite: 111, 112]
+  Future<List<dynamic>> getPendingRequests() async {
+    try {
+      final response = await http.get(
+        Uri.parse("$baseUrl/api/v1/mentors/requests/pending"),
+        headers: await _getHeaders(),
+      );
+      if (response.statusCode == 200) return json.decode(response.body);
+      return [];
+    } catch (e) {
+      debugPrint("Error fetching requests: $e");
+      return [];
+    }
+  }
+
+  // Accept a student request [cite: 117, 118]
+  Future<bool> acceptRequest(String requestId) async {
+    try {
+      final response = await http.patch(
+        Uri.parse("$baseUrl/api/v1/connections/$requestId/accept"),
+        headers: await _getHeaders(),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+}
+
+================================================================================
+FILE: services\mentor_service.dart
+================================================================================
+
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'token_service.dart';
+
+class MentorService {
+  // baseUrl remains root: e.g., "http://10.0.2.2:8000"
+  String get baseUrl => dotenv.env['API_BASE_URL'] ?? "http://10.0.2.2:8000";
+
+  Future<Map<String, String>> _getHeaders() async {
+    final token = await TokenService.getToken();
+    return {
+      'Authorization': 'Bearer $token',
+      'Content-Type': 'application/json',
+    };
+  }
+
+  /// ✅ Fetch Profile - Appending /api/v1 manually
+  Future<Map<String, dynamic>> getMyProfile() async {
+    final url = Uri.parse('$baseUrl/api/v1/profiles/mentors/me');
+    try {
+      final response = await http.get(url, headers: await _getHeaders())
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        throw Exception("Profile not found or error: ${response.statusCode}");
+      }
+    } on SocketException {
+      throw Exception("Server unreachable. Check your network.");
+    } catch (e) {
+      debugPrint("❌ getMyProfile Error: $e");
+      rethrow;
+    }
+  }
+
+  /// ✅ Update Profile - Appending /api/v1 manually
+  Future<bool> updateProfile(Map<String, dynamic> profileData) async {
+    final url = Uri.parse('$baseUrl/api/v1/profiles/mentors/');
+    try {
+      final response = await http.post(
+        url,
+        headers: await _getHeaders(),
+        body: json.encode(profileData),
+      ).timeout(const Duration(seconds: 15));
+
+      debugPrint("📥 API Response: ${response.statusCode} - ${response.body}");
+      return response.statusCode == 201 || response.statusCode == 200;
+    } catch (e) {
+      debugPrint("❌ updateProfile Error: $e");
+      return false;
+    }
+  }
+}
+
+================================================================================
 FILE: services\token_service.dart
 ================================================================================
 
@@ -5623,11 +7234,11 @@ class TokenService {
     if (token != null && !JwtDecoder.isExpired(token)) {
       Map<String, dynamic> decodedToken = JwtDecoder.decode(token);
 
-      // NOTE: Adjust the key ('sub', 'user_id', 'id') to match what your FastAPI backend puts in the JWT payload.
-      return decodedToken['sub']?.toString() ??
-          decodedToken['user_id']?.toString() ??
-          decodedToken['id']?.toString();
+      // ✅ FIX: The backend puts the UUID in 'user_id'.
+      // We must grab this specific field so the database doesn't crash.
+      return decodedToken['user_id']?.toString();
     }
+
     return null; // Token is missing or expired
   }
 

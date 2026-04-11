@@ -1,9 +1,45 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../theme/app_theme.dart';
 import '../services/token_service.dart';
-import '../routes/app_routes.dart';      // <-- ADD THIS
-class StudentSettingScreen extends StatelessWidget {
+import '../routes/app_routes.dart';
+import '../services/assessment_service.dart'; // Ensure this is imported for API logic [cite: 7, 146]
+
+class StudentSettingScreen extends StatefulWidget {
   const StudentSettingScreen({super.key});
+
+  @override
+  State<StudentSettingScreen> createState() => _StudentSettingScreenState();
+}
+
+class _StudentSettingScreenState extends State<StudentSettingScreen> {
+  // Logic: Initialize service and dynamic variable
+  final AssessmentService _apiService = AssessmentService();
+  String _inviteCode = "Loading...";
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchInviteCode();
+  }
+
+  // Logic: Fetch the actual code from the PostgreSQL backend
+  Future<void> _fetchInviteCode() async {
+    try {
+      final code = await _apiService.getStudentInviteCode();
+      if (mounted) {
+        setState(() {
+          _inviteCode = code ?? "Unavailable";
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _inviteCode = "Error";
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,8 +66,19 @@ class StudentSettingScreen extends StatelessWidget {
               _buildSettingTile(
                 Icons.family_restroom_rounded,
                 "Family Link",
-                "Access Code: 655 420",
-                onTap: () {},
+                "Access Code: $_inviteCode", // ✅ UI uses dynamic variable from state
+                onTap: () {
+                  // Logic: Copy to clipboard if code is valid
+                  if (_inviteCode != "Loading..." && _inviteCode != "Unavailable" && _inviteCode != "Error") {
+                    Clipboard.setData(ClipboardData(text: _inviteCode));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text("Invite code copied to clipboard!"),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                },
                 trailing: const Icon(Icons.copy_rounded, size: 18, color: Colors.grey),
               ),
               _buildDivider(),
@@ -76,8 +123,9 @@ class StudentSettingScreen extends StatelessWidget {
               ),
               child: ListTile(
                 onTap: () async {
+                  // Logic: Persistent session clearing [cite: 839, 840, 1058]
                   await TokenService.clearToken();
-                  if (context.mounted) {
+                  if (mounted) {
                     Navigator.pushNamedAndRemoveUntil(context, AppRoutes.landing, (route) => false);
                   }
                 },
@@ -92,7 +140,7 @@ class StudentSettingScreen extends StatelessWidget {
     );
   }
 
-  // --- UI HELPERS ---
+  // --- UI HELPERS (Structure remains identical to your design) ---
 
   Widget _buildSectionLabel(String label) {
     return Padding(

@@ -3,7 +3,9 @@ import '../theme/app_theme.dart';
 import '../profiles/student_profile.dart';
 import '../screens/student_setting_screen.dart';
 import '../screens/mentor_list_screen.dart';
-import '../screens/student_test_screen.dart'; // Import the new screen
+import '../screens/student_test_screen.dart';
+import '../services/assessment_service.dart';
+import '../dashboards/roadmap_dashboard.dart';
 
 class StudentDashboard extends StatefulWidget {
   const StudentDashboard({super.key});
@@ -14,19 +16,69 @@ class StudentDashboard extends StatefulWidget {
 
 class _StudentDashboardState extends State<StudentDashboard> {
   int _currentIndex = 0;
+  final AssessmentService _apiService = AssessmentService();
+
+  // State variables for dynamic data
+  bool _isLoadingStatus = true;
+  bool _hasActiveRoadmap = false;
+  String _userName = "Student";
+  List<dynamic> _recommendedMentors = []; // ✅ New state for backend mentors
+
+  // Superpower values (0.0 to 1.0)
+  double _logicalScore = 0.0;
+  double _quantScore = 0.0;
+  double _verbalScore = 0.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDashboardData();
+  }
+
+  Future<void> _loadDashboardData() async {
+    try {
+      final roadmap = await _apiService.getCurrentRoadmap();
+      final profileData = await _apiService.getUserProfile();
+
+      // 1. Determine career goal for mentor search (fallback to technology)
+      final aspiration = profileData['aspiration_data'] ?? {};
+      String goal = aspiration['dream_career'] ?? "technology";
+
+      // 2. Fetch dynamic mentors from backend [cite: 72]
+      final mentors = await _apiService.searchMentors(careerGoal: goal);
+
+      final Map<String, dynamic> apti = profileData['apti_data'] ?? {};
+      final Map<String, dynamic> scores = apti['scores'] ?? {};
+      final double max = (scores['max_score'] ?? 15).toDouble();
+
+      if (mounted) {
+        setState(() {
+          _hasActiveRoadmap = roadmap != null;
+          _userName = profileData['full_name'] ?? "Student";
+          _recommendedMentors = mentors; // ✅ Sync mentors from backend
+
+          _logicalScore = ((scores['logical'] ?? 0).toDouble()) / max;
+          _quantScore = ((scores['quantitative'] ?? 0).toDouble()) / max;
+          _verbalScore = ((scores['verbal'] ?? 0).toDouble()) / max;
+
+          _isLoadingStatus = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("❌ Error loading dashboard data: $e");
+      if (mounted) {
+        setState(() => _isLoadingStatus = false);
+      }
+    }
+  }
 
   Widget _buildBody() {
     switch (_currentIndex) {
-      case 0:
-        return _buildHomeContent();
-      case 1:
-        return const StudentTestScreen(); // Now shows the Road to Discovery
-      case 2:
-        return const MentorListScreen();
-      case 3:
-        return const StudentProfile();
-      default:
-        return _buildHomeContent();
+      case 0: return _buildHomeContent();
+      case 1: return const StudentTestScreen();
+      case 2: return const MentorListScreen();
+      case 3: return const StudentProfile();
+      default: return _buildHomeContent();
     }
   }
 
@@ -54,8 +106,13 @@ class _StudentDashboardState extends State<StudentDashboard> {
             _buildHeader(context),
             const SizedBox(height: 24),
             GestureDetector(
-              // UPDATED: Now switches tab index to 1 instead of pushing a new page
-              onTap: () => setState(() => _currentIndex = 1),
+              onTap: () {
+                if (_hasActiveRoadmap) {
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const RoadmapDashboard()));
+                } else {
+                  setState(() => _currentIndex = 1);
+                }
+              },
               child: _buildJourneyCard(),
             ),
             const SizedBox(height: 24),
@@ -83,24 +140,77 @@ class _StudentDashboardState extends State<StudentDashboard> {
               ],
             ),
             const SizedBox(height: 16),
+
+            // ✅ Dynamic Mentor Horizontal List
             SizedBox(
               height: 195,
-              child: ListView(
+              child: _recommendedMentors.isEmpty
+                  ? const Center(child: Text("Finding mentors..."))
+                  : ListView.builder(
                 scrollDirection: Axis.horizontal,
                 clipBehavior: Clip.none,
-                children: [
-                  _buildMentorCard("Dr. Sarah James", "Software Engineering", 'https://i.pravatar.cc/150?img=32'),
-                  const SizedBox(width: 16),
-                  _buildMentorCard("John Smith", "Cybersecurity Expert", 'https://i.pravatar.cc/150?img=60'),
-                  const SizedBox(width: 16),
-                  _buildMentorCard("Maria Garcia", "UI/UX Designer", 'https://i.pravatar.cc/150?img=45'),
-                ],
+                itemCount: _recommendedMentors.length,
+                itemBuilder: (context, index) {
+                  final m = _recommendedMentors[index];
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 16),
+                    child: _buildMentorCard(
+                        m['full_name'] ?? "Expert",
+                        m['expertise'] ?? "Professional",
+                        'https://i.pravatar.cc/150?u=${m['id']}' // Unique dynamic avatar
+                    ),
+                  );
+                },
               ),
             ),
             const SizedBox(height: 120),
           ],
         ),
       ),
+    );
+  }
+
+  // --- UI HELPERS (UNCHANGED DESIGN) ---
+
+  Widget _buildStrengthPreview() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 20, offset: const Offset(0, 10))]
+      ),
+      child: Column(
+        children: [
+          _buildStrengthBar("Logical Reasoning", _logicalScore, Colors.blue),
+          const SizedBox(height: 14),
+          _buildStrengthBar("Quantitative Aptitude", _quantScore, Colors.purple),
+          const SizedBox(height: 14),
+          _buildStrengthBar("Verbal Ability", _verbalScore, Colors.orange),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStrengthBar(String label, double progress, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blueGrey)),
+          Text("${(progress * 100).toInt()}%", style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12))
+        ]),
+        const SizedBox(height: 8),
+        ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: LinearProgressIndicator(
+                value: progress,
+                minHeight: 6,
+                backgroundColor: color.withOpacity(0.1),
+                valueColor: AlwaysStoppedAnimation(color)
+            )
+        ),
+      ],
     );
   }
 
@@ -156,17 +266,14 @@ class _StudentDashboardState extends State<StudentDashboard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text("Welcome back,", style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.bold)),
-                Text("Alex", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppTheme.student)),
+                Text(_userName, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppTheme.student)),
               ],
             ),
           ],
         ),
         Row(
           children: [
-            GestureDetector(
-              onTap: () {},
-              child: _buildCircleIcon(Icons.notifications_none_rounded),
-            ),
+            _buildCircleIcon(Icons.notifications_none_rounded),
             const SizedBox(width: 12),
             GestureDetector(
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const StudentSettingScreen())),
@@ -198,23 +305,20 @@ class _StudentDashboardState extends State<StudentDashboard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text("CAREER DISCOVERY", style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
-              Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 14),
+              Text(_hasActiveRoadmap ? "ACTIVE ROADMAP" : "CAREER DISCOVERY", style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+              const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 14),
             ],
           ),
           const SizedBox(height: 12),
-          const Text("Explore Your Career\nPathways", style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, height: 1.2)),
+          if (_isLoadingStatus)
+            const SizedBox(height: 52, child: Align(alignment: Alignment.centerLeft, child: SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))))
+          else
+            Text(_hasActiveRoadmap ? "Continue Your\nJourney" : "Explore Your\nCareer Pathways", style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900, height: 1.2)),
           const SizedBox(height: 20),
-          Row(children: List.generate(5, (index) => Expanded(
-            child: Container(
-              height: 6,
-              margin: EdgeInsets.only(right: index == 4 ? 0 : 8),
-              decoration: BoxDecoration(color: index < 1 ? const Color(0xFF00FFC2) : Colors.white24, borderRadius: BorderRadius.circular(10)),
-            ),
-          ))),
+          Row(children: List.generate(5, (index) => Expanded(child: Container(height: 6, margin: EdgeInsets.only(right: index == 4 ? 0 : 8), decoration: BoxDecoration(color: _hasActiveRoadmap ? const Color(0xFF00FFC2) : (index < 1 ? const Color(0xFF00FFC2) : Colors.white24), borderRadius: BorderRadius.circular(10)))))),
         ],
       ),
     );
@@ -236,36 +340,6 @@ class _StudentDashboardState extends State<StudentDashboard> {
     );
   }
 
-  Widget _buildStrengthPreview() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 20, offset: const Offset(0, 10))]),
-      child: Column(
-        children: [
-          _buildStrengthBar("Logical Reasoning", 0.9, Colors.blue),
-          const SizedBox(height: 14),
-          _buildStrengthBar("Creative Thinking", 0.7, Colors.purple),
-          const SizedBox(height: 14),
-          _buildStrengthBar("Verbal Ability", 0.5, Colors.orange),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStrengthBar(String label, double progress, Color color) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blueGrey)),
-          Text("${(progress * 100).toInt()}%", style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12))
-        ]),
-        const SizedBox(height: 8),
-        ClipRRect(borderRadius: BorderRadius.circular(10), child: LinearProgressIndicator(value: progress, minHeight: 6, backgroundColor: color.withOpacity(0.1), valueColor: AlwaysStoppedAnimation(color))),
-      ],
-    );
-  }
-
   Widget _buildMentorCard(String name, String role, String img) {
     return Container(
       width: 165,
@@ -275,8 +349,8 @@ class _StudentDashboardState extends State<StudentDashboard> {
         children: [
           CircleAvatar(radius: 30, backgroundImage: NetworkImage(img)),
           const SizedBox(height: 12),
-          Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14), textAlign: TextAlign.center, maxLines: 1),
-          Text(role, style: const TextStyle(color: Colors.grey, fontSize: 11), textAlign: TextAlign.center),
+          Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
+          Text(role, style: const TextStyle(color: Colors.grey, fontSize: 11), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
           const Spacer(),
           ElevatedButton(
               onPressed: () => setState(() => _currentIndex = 2),

@@ -19,7 +19,10 @@ dependencies:
   flutter_dotenv: ^5.1.0
   jwt_decoder: ^2.0.1
   flutter_secure_storage: ^10.0.0
-  web: ^1.1.0 # Added to ensure compatibility with newer Flutter versions
+  web: ^1.1.0
+
+  # --- REAL-TIME CHAT ---
+  web_socket_channel: ^2.4.0
 
 dev_dependencies:
   flutter_test:

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../dashboards/parent_dashboard.dart';
+import '../services/assessment_service.dart'; // ✅ Added required import
 
 class LinkWardScreen extends StatefulWidget {
   const LinkWardScreen({super.key});
@@ -13,24 +14,88 @@ class _LinkWardScreenState extends State<LinkWardScreen> {
   final TextEditingController _wardEmailController = TextEditingController();
   final TextEditingController _accessCodeController = TextEditingController();
 
-  void _handleLinkProfile() {
-    // Show a modern loading state
-    showGeneralDialog(
+  // ✅ Instantiate the service to handle API calls
+  final AssessmentService _apiService = AssessmentService();
+
+  /// Logic: Handles the linking process by validating input and calling the backend
+  void _handleLinkProfile() async {
+    final code = _accessCodeController.text.trim();
+
+    // 1. Basic Validation
+    if (code.isEmpty || code.length != 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Please enter a valid 6-digit code"),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    // 2. Show Modern Loading Dialog
+    showDialog(
       context: context,
       barrierDismissible: false,
-      pageBuilder: (_, __, ___) => const Center(
-        child: CircularProgressIndicator(color: AppTheme.parentTheme, strokeWidth: 3),
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(
+          color: AppTheme.parentTheme,
+          strokeWidth: 3,
+        ),
       ),
     );
 
-    Future.delayed(const Duration(seconds: 2), () {
-      Navigator.pop(context); // Close loader
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (context) => const ParentDashboard()),
-            (route) => false,
+    try {
+      // 3. Call the Backend API via AssessmentService
+      final result = await _apiService.linkStudentToParent(code);
+
+      if (!mounted) return;
+      Navigator.pop(context); // Close the loading dialog
+
+      // 4. Handle Success or Failure
+      if (result['success'] == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Successfully linked!"),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+
+        // 5. Navigate to Parent Dashboard and clear navigation stack
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const ParentDashboard()),
+              (route) => false,
+        );
+      } else {
+        // Display backend error message (e.g., "Invalid invite code")
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message'] ?? "Linking failed"),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context); // Close loader on exception
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("An error occurred: $e"),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+        ),
       );
-    });
+    }
+  }
+
+  @override
+  void dispose() {
+    _wardEmailController.dispose();
+    _accessCodeController.dispose();
+    super.dispose();
   }
 
   @override
@@ -56,13 +121,10 @@ class _LinkWardScreenState extends State<LinkWardScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 20),
-
-                // 1. CUSTOM BACK BUTTON
                 _buildBackButton(),
-
                 const SizedBox(height: 40),
 
-                // 2. HEADER WITH ACCENT
+                // Header Section
                 Stack(
                   children: [
                     Positioned(
@@ -98,7 +160,7 @@ class _LinkWardScreenState extends State<LinkWardScreen> {
 
                 const SizedBox(height: 45),
 
-                // 3. INPUTS WITH NEUMORPHIC STYLE
+                // Inputs Section
                 _buildInputLabel("Ward's Registered Email"),
                 _buildInputField(
                   hint: "alex@email.com",
@@ -118,7 +180,7 @@ class _LinkWardScreenState extends State<LinkWardScreen> {
 
                 const SizedBox(height: 20),
 
-                // 4. GLASS-STYLE INFO CARD
+                // Instruction Card
                 Container(
                   padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
@@ -136,7 +198,7 @@ class _LinkWardScreenState extends State<LinkWardScreen> {
                       const SizedBox(width: 15),
                       const Expanded(
                         child: Text(
-                          "Alex can find this code in their Profile > Settings > Family Link.",
+                          "Your ward can find this code in their Profile > Settings > Family Link.",
                           style: TextStyle(color: Colors.black54, fontSize: 13, height: 1.4, fontWeight: FontWeight.w500),
                         ),
                       ),
@@ -146,7 +208,6 @@ class _LinkWardScreenState extends State<LinkWardScreen> {
 
                 const SizedBox(height: 60),
 
-                // 5. THE MAIN ACTION BUTTON
                 _buildVerifyButton(),
 
                 const SizedBox(height: 20),
@@ -173,7 +234,7 @@ class _LinkWardScreenState extends State<LinkWardScreen> {
     );
   }
 
-  // --- UI COMPONENTS ---
+  // --- UI COMPONENTS (UNCHANGED DESIGN) ---
 
   Widget _buildBackButton() {
     return GestureDetector(
@@ -211,7 +272,8 @@ class _LinkWardScreenState extends State<LinkWardScreen> {
       ),
       child: TextField(
         controller: controller,
-        keyboardType: isCode ? TextInputType.number : TextInputType.emailAddress,
+        textCapitalization: TextCapitalization.characters, // ✅ Auto-capitalize for invite codes
+        keyboardType: isCode ? TextInputType.text : TextInputType.emailAddress,
         maxLength: isCode ? 6 : null,
         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         decoration: InputDecoration(
