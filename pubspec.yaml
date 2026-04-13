@@ -24,6 +24,10 @@ dependencies:
   # --- REAL-TIME CHAT ---
   web_socket_channel: ^2.4.0
 
+  # --- VIDEO CALL (DYTE) ---
+  dyte_uikit: ^0.9.6
+  permission_handler: ^11.3.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -49,7 +49,8 @@ FILE: dashboards\mentor_dashboard.dart
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../profiles/mentor_profile.dart';
-import '../screens/mentor_schedule_screen.dart'; // Ensure this is imported
+import '../screens/mentor_schedule_screen.dart';
+import '../screens/mentor_chat_screen.dart';
 
 class MentorDashboard extends StatefulWidget {
   const MentorDashboard({super.key});
@@ -59,18 +60,25 @@ class MentorDashboard extends StatefulWidget {
 }
 
 class _MentorDashboardState extends State<MentorDashboard> {
-  // 1. TRACK THE ACTIVE TAB
   int _currentIndex = 0;
+  // ✅ Added flag to control Bottom Nav visibility
+  bool _hideNavBar = false;
 
-  // 2. WIDGET SWITCHER LOGIC
   Widget _buildBody() {
     switch (_currentIndex) {
       case 0:
         return _buildHomeContent();
       case 1:
-        return const MentorScheduleScreen(); // Your new high-end Schedule UI
+        return const MentorScheduleScreen();
       case 2:
-        return const Center(child: Text("Messages & Chats", style: TextStyle(fontWeight: FontWeight.bold)));
+      // ✅ Listen to chat toggle to hide/show Nav Bar
+        return MentorChatScreen(
+          onChatToggle: (isFullChatActive) {
+            setState(() {
+              _hideNavBar = isFullChatActive;
+            });
+          },
+        );
       case 3:
         return const MentorProfile();
       default:
@@ -82,16 +90,16 @@ class _MentorDashboardState extends State<MentorDashboard> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF4F7F6),
-      // AnimatedSwitcher for smooth transitions between tabs
       body: AnimatedSwitcher(
         duration: const Duration(milliseconds: 300),
         child: _buildBody(),
       ),
-      bottomNavigationBar: _buildBottomNav(),
+      // ✅ Physically hide nav bar based on chat state
+      bottomNavigationBar: _hideNavBar ? const SizedBox.shrink() : _buildBottomNav(),
     );
   }
 
-  // --- HOME CONTENT (Original Dashboard View) ---
+  // --- HOME CONTENT ---
   Widget _buildHomeContent() {
     return SafeArea(
       child: SingleChildScrollView(
@@ -119,22 +127,18 @@ class _MentorDashboardState extends State<MentorDashboard> {
               children: [
                 const Text("Today's Schedule", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
                 GestureDetector(
-                  // UPDATED: Now switches the tab index to 1
                   onTap: () => setState(() => _currentIndex = 1),
                   child: Text("VIEW CALENDAR",
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.mentor.withOpacity(0.7))),
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.mentor.withValues(alpha: 0.7))),
                 ),
               ],
             ),
             const SizedBox(height: 16),
-
-            // Interaction: Tapping the live session also takes you to the schedule
             GestureDetector(
               onTap: () => setState(() => _currentIndex = 1),
               child: _buildScheduleTile("04:30 PM", "Alex", "Career Pathing - Session 3", isLive: true),
             ),
             _buildScheduleTile("06:00 PM", "Priya Sharma", "Resume Review", isLive: false),
-
             const SizedBox(height: 32),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -154,7 +158,7 @@ class _MentorDashboardState extends State<MentorDashboard> {
     );
   }
 
-  // --- PERSISTENT BOTTOM NAVIGATION ---
+  // --- BOTTOM NAVIGATION ---
   Widget _buildBottomNav() {
     return Container(
       margin: const EdgeInsets.fromLTRB(24, 0, 24, 30),
@@ -162,7 +166,7 @@ class _MentorDashboardState extends State<MentorDashboard> {
       decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(40),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 30, offset: const Offset(0, 10))]
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 30, offset: const Offset(0, 10))]
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -179,7 +183,10 @@ class _MentorDashboardState extends State<MentorDashboard> {
   Widget _buildNavItem(IconData icon, String label, int index) {
     bool isActive = _currentIndex == index;
     return GestureDetector(
-      onTap: () => setState(() => _currentIndex = index),
+      onTap: () => setState(() {
+        _currentIndex = index;
+        _hideNavBar = false;
+      }),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -202,7 +209,7 @@ class _MentorDashboardState extends State<MentorDashboard> {
     );
   }
 
-  // --- HEADER & COMPONENT HELPERS ---
+  // --- COMPONENT HELPERS ---
   Widget _buildHeader(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -222,7 +229,7 @@ class _MentorDashboardState extends State<MentorDashboard> {
         ),
         Container(
           padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, border: Border.all(color: Colors.grey.withOpacity(0.1))),
+          decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, border: Border.all(color: Colors.grey.withValues(alpha: 0.1))),
           child: const Icon(Icons.settings_suggest_outlined, size: 22, color: AppTheme.mentor),
         ),
       ],
@@ -236,7 +243,7 @@ class _MentorDashboardState extends State<MentorDashboard> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(24),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 20, offset: const Offset(0, 10))],
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 20, offset: const Offset(0, 10))],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -258,7 +265,7 @@ class _MentorDashboardState extends State<MentorDashboard> {
       decoration: BoxDecoration(
         color: isLive ? AppTheme.mentor : Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: isLive ? [BoxShadow(color: AppTheme.mentor.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8))] : [],
+        boxShadow: isLive ? [BoxShadow(color: AppTheme.mentor.withValues(alpha: 0.3), blurRadius: 15, offset: const Offset(0, 8))] : [],
       ),
       child: Row(
         children: [
@@ -311,7 +318,7 @@ class _MentorDashboardState extends State<MentorDashboard> {
                 CircularProgressIndicator(
                     value: progress,
                     strokeWidth: 4,
-                    backgroundColor: Colors.grey.withOpacity(0.1),
+                    backgroundColor: Colors.grey.withValues(alpha: 0.1),
                     valueColor: const AlwaysStoppedAnimation(AppTheme.mentor)
                 ),
                 Center(child: Text("${(progress * 100).toInt()}%",
@@ -3316,6 +3323,785 @@ class _CareerJourneyScreenState extends State<CareerJourneyScreen> {
 }
 
 ================================================================================
+FILE: screens\chat_screen.dart
+================================================================================
+
+import 'dart:async';
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:web_socket_channel/status.dart' as ws_status;
+import '../theme/app_theme.dart';
+import '../services/assessment_service.dart';
+
+// ─── Data Model ───────────────────────────────────────────────────────────────
+
+class ChatMessage {
+  final String id;
+  final String senderId;
+  final String message;
+  final DateTime sentAt;
+  final bool isMe;
+
+  ChatMessage({
+    required this.id,
+    required this.senderId,
+    required this.message,
+    required this.sentAt,
+    required this.isMe,
+  });
+
+  factory ChatMessage.fromJson(Map<String, dynamic> json, String currentUserId) {
+    return ChatMessage(
+      id: json['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      senderId: json['sender_id'] ?? '',
+      message: json['message'] ?? '',
+      sentAt: json['timestamp'] != null
+          ? DateTime.tryParse(json['timestamp']) ?? DateTime.now()
+          : (json['sent_at'] != null
+          ? DateTime.tryParse(json['sent_at']) ?? DateTime.now()
+          : DateTime.now()),
+      isMe: (json['is_me'] == true) ||
+          (json['sender_id'] != null && json['sender_id'] == currentUserId),
+    );
+  }
+}
+
+enum WsState { connecting, connected, error, disconnected }
+
+class ChatScreen extends StatefulWidget {
+  final String otherUserId;
+  final String otherUserName;
+  final String otherUserRole;
+  final String avatarUrl;
+
+  const ChatScreen({
+    super.key,
+    required this.otherUserId,
+    required this.otherUserName,
+    required this.otherUserRole,
+    required this.avatarUrl,
+  });
+
+  @override
+  State<ChatScreen> createState() => _ChatScreenState();
+}
+
+class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
+  final AssessmentService _apiService = AssessmentService();
+
+  String get _wsBaseUrl => _apiService.baseUrl
+      .replaceFirst(RegExp(r'^https://'), 'wss://')
+      .replaceFirst(RegExp(r'^http://'), 'ws://');
+
+  WebSocketChannel? _channel;
+  StreamSubscription? _wsSub;
+
+  final List<ChatMessage> _messages = [];
+  WsState _wsState = WsState.connecting;
+  String _errorMessage = '';
+
+  String _currentUserId = '';
+  bool _isLoadingHistory = true;
+  bool _otherUserOnline = false;
+  String? _cachedToken;
+
+  final TextEditingController _msgController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  late AnimationController _dotAnimController;
+
+  int _reconnectAttempts = 0;
+  static const int _maxReconnectAttempts = 3;
+  Timer? _reconnectTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _dotAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    )..repeat(reverse: true);
+    _initChat();
+  }
+
+  @override
+  void dispose() {
+    _dotAnimController.dispose();
+    _wsSub?.cancel();
+    _channel?.sink.close(ws_status.goingAway);
+    _scrollController.dispose();
+    _msgController.dispose();
+    _reconnectTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _initChat() async {
+    try {
+      final profile = await _apiService.getUserProfile();
+      _currentUserId = profile['user_id']?.toString() ?? '';
+      _cachedToken = await _apiService.getAuthToken();
+      await _fetchHistory();
+      _connectWebSocket(_cachedToken!);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _wsState = WsState.error;
+          _errorMessage = 'Failed to initialise chat. Please try again.';
+          _isLoadingHistory = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _fetchHistory() async {
+    try {
+      final history = await _apiService.getChatMessages(widget.otherUserId);
+      if (mounted) {
+        setState(() {
+          _messages.clear();
+          for (final m in history) {
+            _messages.add(
+              ChatMessage.fromJson(m as Map<String, dynamic>, _currentUserId),
+            );
+          }
+          _isLoadingHistory = false;
+        });
+        _scrollToBottom(animate: false);
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoadingHistory = false);
+    }
+  }
+
+  void _connectWebSocket(String token) {
+    if (!mounted) return;
+    setState(() => _wsState = WsState.connecting);
+
+    final uri = Uri.parse(
+      '$_wsBaseUrl/api/v1/mentorship/chat/${widget.otherUserId}/?token=$token',
+    );
+
+    try {
+      _channel = WebSocketChannel.connect(uri);
+      setState(() {
+        _wsState = WsState.connected;
+        _reconnectAttempts = 0;
+      });
+      _wsSub = _channel!.stream.listen(
+        _onWsMessage,
+        onError: _onWsError,
+        onDone: _onWsDone,
+      );
+    } catch (e) {
+      _handleWsFailure('Could not connect to chat server.');
+    }
+  }
+
+  void _onWsMessage(dynamic raw) {
+    try {
+      final data = jsonDecode(raw as String) as Map<String, dynamic>;
+      final event = data['event'] as String?;
+
+      switch (event) {
+        case 'NEW_MESSAGE':
+          final msg = ChatMessage.fromJson(data, _currentUserId);
+          if (mounted) {
+            setState(() => _messages.add(msg));
+            _scrollToBottom();
+          }
+          break;
+        case 'ERROR':
+          _handleWsFailure(data['message']?.toString() ?? 'An error occurred.');
+          break;
+        case 'USER_ONLINE':
+          if (mounted) setState(() => _otherUserOnline = true);
+          break;
+        case 'USER_OFFLINE':
+          if (mounted) setState(() => _otherUserOnline = false);
+          break;
+      }
+    } catch (e) {
+      debugPrint('WS parse error: $e');
+    }
+  }
+
+  void _onWsError(dynamic error) {
+    _handleWsFailure('Connection error. Reconnecting…');
+  }
+
+  void _onWsDone() {
+    if (mounted) {
+      setState(() {
+        _wsState = WsState.disconnected;
+        _otherUserOnline = false;
+      });
+      _scheduleReconnect();
+    }
+  }
+
+  void _handleWsFailure(String message) {
+    if (!mounted) return;
+    setState(() {
+      _wsState = WsState.error;
+      _errorMessage = message;
+    });
+    _scheduleReconnect();
+  }
+
+  void _scheduleReconnect() {
+    if (_reconnectAttempts >= _maxReconnectAttempts) {
+      if (mounted) {
+        setState(() {
+          _wsState = WsState.error;
+          _errorMessage = 'Connection lost. Please go back and try again.';
+        });
+      }
+      return;
+    }
+    _reconnectAttempts++;
+    _reconnectTimer =
+        Timer(Duration(seconds: 2 * _reconnectAttempts), () async {
+          try {
+            final token = _cachedToken ?? await _apiService.getAuthToken();
+            _connectWebSocket(token);
+          } catch (_) {
+            _handleWsFailure('Reconnection failed.');
+          }
+        });
+  }
+
+  void _sendMessage() {
+    final text = _msgController.text.trim();
+    if (text.isEmpty || _wsState != WsState.connected) return;
+
+    try {
+      _channel?.sink.add(jsonEncode({'message': text}));
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Failed to send message.'),
+            backgroundColor: Colors.red),
+      );
+      return;
+    }
+
+    setState(() {
+      _messages.add(ChatMessage(
+        id: 'opt_${DateTime.now().millisecondsSinceEpoch}',
+        senderId: _currentUserId,
+        message: text,
+        sentAt: DateTime.now(),
+        isMe: true,
+      ));
+    });
+    _msgController.clear();
+    _scrollToBottom();
+  }
+
+  void _scrollToBottom({bool animate = true}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) return;
+      if (animate) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      } else {
+        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF0F4FF),
+      body: Column(
+        children: [
+          _buildAppBar(),
+          _buildConnectionBanner(),
+          Expanded(child: _buildBody()),
+          _buildInputBar(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAppBar() {
+    return Container(
+      padding: EdgeInsets.only(
+        top: MediaQuery.of(context).padding.top + 8,
+        bottom: 12,
+        left: 8,
+        right: 16,
+      ),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppTheme.student,
+            AppTheme.student.withValues(alpha: 0.85),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.student.withValues(alpha: 0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                color: Colors.white, size: 20),
+            onPressed: () => Navigator.pop(context),
+          ),
+          Stack(
+            children: [
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: Colors.white24,
+                backgroundImage: NetworkImage(widget.avatarUrl),
+              ),
+              if (_otherUserOnline)
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF4CAF50),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.otherUserName,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _wsState == WsState.connected
+                      ? (_otherUserOnline ? 'Online' : 'Connected')
+                      : (_wsState == WsState.connecting
+                      ? 'Connecting…'
+                      : 'Offline'),
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.8),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.videocam_rounded, color: Colors.white),
+            onPressed: () {},
+          ),
+          IconButton(
+            icon: const Icon(Icons.call_rounded, color: Colors.white),
+            onPressed: () {},
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildConnectionBanner() {
+    if (_wsState == WsState.connected) return const SizedBox.shrink();
+
+    late Color bg;
+    late String label;
+    Widget? trailing;
+
+    switch (_wsState) {
+      case WsState.connecting:
+        bg = Colors.orange.shade600;
+        label = 'Connecting to chat…';
+        trailing = const SizedBox(
+          width: 14,
+          height: 14,
+          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+        );
+        break;
+      case WsState.disconnected:
+        bg = Colors.grey.shade700;
+        label = 'Reconnecting…';
+        trailing = const SizedBox(
+          width: 14,
+          height: 14,
+          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+        );
+        break;
+      case WsState.error:
+      default:
+        bg = Colors.red.shade600;
+        label = _errorMessage;
+        trailing = TextButton(
+          onPressed: _initChat,
+          child: const Text('Retry',
+              style:
+              TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        );
+        break;
+    }
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      color: bg,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(label,
+                style: const TextStyle(color: Colors.white, fontSize: 13)),
+          ),
+          if (trailing != null) trailing,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_isLoadingHistory) {
+      return const Center(
+          child: CircularProgressIndicator(color: AppTheme.student));
+    }
+    if (_messages.isEmpty) return _buildEmptyState();
+
+    return ListView.builder(
+      controller: _scrollController,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      itemCount: _messages.length,
+      itemBuilder: (context, index) {
+        final msg = _messages[index];
+        final prev = index > 0 ? _messages[index - 1] : null;
+        return Column(
+          children: [
+            if (_shouldShowDateChip(prev, msg)) _buildDateChip(msg.sentAt),
+            _buildMessageBubble(msg, index),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              color: AppTheme.student.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.chat_bubble_outline_rounded,
+                size: 40, color: AppTheme.student.withValues(alpha: 0.6)),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Start your conversation with\n${widget.otherUserName}',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                color: Colors.grey.shade500, fontSize: 15, height: 1.5),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.orange.shade50,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.info_outline_rounded,
+                    size: 14, color: Colors.orange.shade700),
+                const SizedBox(width: 6),
+                Text(
+                  'Messages disappear after 24 hours',
+                  style: TextStyle(color: Colors.orange.shade700, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool _shouldShowDateChip(ChatMessage? prev, ChatMessage curr) {
+    if (prev == null) return true;
+    return prev.sentAt.year != curr.sentAt.year ||
+        prev.sentAt.month != curr.sentAt.month ||
+        prev.sentAt.day != curr.sentAt.day;
+  }
+
+  Widget _buildDateChip(DateTime date) {
+    final now = DateTime.now();
+    String label;
+    if (date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day) {
+      label = 'Today';
+    } else if (date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day - 1) {
+      label = 'Yesterday';
+    } else {
+      label = '${date.day}/${date.month}/${date.year}';
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 12),
+      alignment: Alignment.center,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4)
+          ],
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+              color: Colors.grey.shade500,
+              fontSize: 12,
+              fontWeight: FontWeight.w600),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMessageBubble(ChatMessage msg, int index) {
+    final isMe = msg.isMe;
+    final isLast =
+        index == _messages.length - 1 || _messages[index + 1].isMe != isMe;
+
+    final timeStr =
+        '${msg.sentAt.hour.toString().padLeft(2, '0')}:${msg.sentAt.minute.toString().padLeft(2, '0')}';
+
+    return Padding(
+      padding: EdgeInsets.only(top: 2, bottom: isLast ? 8 : 2),
+      child: Row(
+        mainAxisAlignment:
+        isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (!isMe) ...[
+            isLast
+                ? CircleAvatar(
+              radius: 16,
+              backgroundImage: NetworkImage(widget.avatarUrl),
+            )
+                : const SizedBox(width: 32),
+            const SizedBox(width: 6),
+          ],
+          ConstrainedBox(
+            constraints:
+            BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.72),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                gradient: isMe
+                    ? LinearGradient(
+                  colors: [
+                    AppTheme.student,
+                    AppTheme.student.withValues(alpha: 0.85),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                )
+                    : null,
+                color: isMe ? null : Colors.white,
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(20),
+                  topRight: const Radius.circular(20),
+                  bottomLeft: isMe
+                      ? const Radius.circular(20)
+                      : (isLast
+                      ? const Radius.circular(4)
+                      : const Radius.circular(20)),
+                  bottomRight: isMe
+                      ? (isLast
+                      ? const Radius.circular(4)
+                      : const Radius.circular(20))
+                      : const Radius.circular(20),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: isMe
+                        ? AppTheme.student.withValues(alpha: 0.25)
+                        : Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    msg.message,
+                    style: TextStyle(
+                      color: isMe ? Colors.white : Colors.black87,
+                      fontSize: 15,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        timeStr,
+                        style: TextStyle(
+                          color: isMe
+                              ? Colors.white.withValues(alpha: 0.7)
+                              : Colors.grey.shade400,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      if (isMe) ...[
+                        const SizedBox(width: 4),
+                        Icon(Icons.done_all_rounded,
+                            size: 14,
+                            color: Colors.white.withValues(alpha: 0.7)),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (isMe) const SizedBox(width: 4),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInputBar() {
+    final bool canSend = _wsState == WsState.connected;
+
+    return Container(
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 12,
+        top: 10,
+        bottom: MediaQuery.of(context).padding.bottom + 10,
+      ),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, -2))
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(
+            child: Container(
+              constraints: const BoxConstraints(maxHeight: 120),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF2F4F8),
+                borderRadius: BorderRadius.circular(28),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: TextField(
+                      controller: _msgController,
+                      maxLines: null,
+                      keyboardType: TextInputType.multiline,
+                      textCapitalization: TextCapitalization.sentences,
+                      enabled: canSend,
+                      style: const TextStyle(fontSize: 15),
+                      decoration: InputDecoration(
+                        hintText: canSend ? 'Message…' : 'Connecting…',
+                        hintStyle:
+                        TextStyle(color: Colors.grey.shade400, fontSize: 15),
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      onSubmitted: (_) => _sendMessage(),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 4, bottom: 4),
+                    child: IconButton(
+                      icon: Icon(Icons.attach_file_rounded,
+                          color: Colors.grey.shade500),
+                      onPressed: canSend ? () {} : null,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: canSend ? _sendMessage : null,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                gradient: canSend
+                    ? LinearGradient(
+                  colors: [
+                    AppTheme.student,
+                    AppTheme.student.withValues(alpha: 0.85),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                )
+                    : null,
+                color: canSend ? null : Colors.grey.shade300,
+                shape: BoxShape.circle,
+                boxShadow: canSend
+                    ? [
+                  BoxShadow(
+                      color: AppTheme.student.withValues(alpha: 0.4),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4))
+                ]
+                    : [],
+              ),
+              child: const Icon(Icons.send_rounded, color: Colors.white, size: 22),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+================================================================================
 FILE: screens\landing_screen.dart
 ================================================================================
 
@@ -4211,61 +4997,330 @@ class _LoginScreenState extends State<LoginScreen> {
 }
 
 ================================================================================
-FILE: screens\mentor_chat_screen.dart.dart
+FILE: screens\mentor_chat_screen.dart
 ================================================================================
 
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:web_socket_channel/status.dart' as ws_status;
 import '../theme/app_theme.dart';
+import '../services/chat_service.dart';
+import '../services/mentor_service.dart'; // ✅ Added to check for active sessions
+import 'video_call_screen.dart'; // ✅ Added to launch the VC
+
+// --- Data Model ---
+class ChatMessage {
+  final String id;
+  final String senderId;
+  final String message;
+  final DateTime sentAt;
+  final bool isMe;
+
+  ChatMessage({
+    required this.id,
+    required this.senderId,
+    required this.message,
+    required this.sentAt,
+    required this.isMe,
+  });
+
+  factory ChatMessage.fromJson(Map<String, dynamic> json, String currentUserId) {
+    return ChatMessage(
+      id: json['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      senderId: json['sender_id']?.toString() ?? '',
+      message: json['message'] ?? '',
+      sentAt: json['timestamp'] != null
+          ? DateTime.tryParse(json['timestamp']) ?? DateTime.now()
+          : (json['sent_at'] != null ? DateTime.tryParse(json['sent_at']) ?? DateTime.now() : DateTime.now()),
+      isMe: (json['is_me'] == true) || (json['sender_id'] != null && json['sender_id'] == currentUserId),
+    );
+  }
+}
 
 class MentorChatScreen extends StatefulWidget {
-  const MentorChatScreen({super.key});
+  final Function(bool)? onChatToggle;
+  const MentorChatScreen({super.key, this.onChatToggle});
 
   @override
   State<MentorChatScreen> createState() => _MentorChatScreenState();
 }
 
 class _MentorChatScreenState extends State<MentorChatScreen> {
+  final ChatService _chatService = ChatService();
+  final MentorService _mentorService = MentorService(); // ✅ Added to fetch sessions
+
+  final TextEditingController _messageController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+
+  WebSocketChannel? _channel;
+  StreamSubscription? _wsSub;
+  bool _isConnected = false;
+
   bool _isViewingIndividualChat = false;
   String _currentChatPartner = "";
+  String _currentChatPartnerId = "";
+  String _currentUserId = "";
+  String _inputText = "";
 
-  // Mock data for requests - empty list to test "No requests" state
-  final List<Map<String, String>> _pendingRequests = [
-    {"name": "Yash Choudhary", "subject": "Python Core", "img": "5"},
-    {"name": "Ananya Singh", "subject": "UI/UX Design", "img": "9"},
-  ];
+  List<dynamic> _pendingRequests = [];
+  List<dynamic> _activeChats = [];
+  List<ChatMessage> _messages = [];
 
-  final List<Map<String, String>> _mockChats = [
-    {"name": "Aditi Malviya", "msg": "Can we discuss the Java roadmap?", "time": "10:30 AM", "img": "10", "unread": "1"},
-    {"name": "Mridul Bhardwaj", "msg": "Sent the assignment tasks.", "time": "Yesterday", "img": "12", "unread": "0"},
-    {"name": "Aryan Verma", "msg": "Thank you for the guidance!", "time": "9:15 AM", "img": "15", "unread": "0"},
-  ];
+  bool _isLoadingRequests = false;
+  bool _isLoadingChats = false;
+  bool _isLoadingHistory = false;
+  bool _isJoiningCall = false; // ✅ Added loading state for the VC button
+
+  @override
+  void initState() {
+    super.initState();
+    _initMentorData();
+  }
+
+  @override
+  void dispose() {
+    _disconnectWebSocket();
+    _messageController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _initMentorData() async {
+    try {
+      final token = await _chatService.getAuthToken();
+      if (token != null) {
+        await _fetchInitialData();
+      }
+    } catch (e) {
+      debugPrint("Init Error: $e");
+    }
+  }
+
+  Future<void> _fetchInitialData() async {
+    await Future.wait([_fetchRequests(), _fetchActiveChats()]);
+  }
+
+  Future<void> _fetchActiveChats() async {
+    if (mounted) setState(() => _isLoadingChats = true);
+    try {
+      final data = await _chatService.getChatConnections();
+      if (mounted) {
+        setState(() {
+          _activeChats = data;
+          _isLoadingChats = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoadingChats = false);
+    }
+  }
+
+  Future<void> _fetchRequests({Function? onUpdate}) async {
+    if (mounted) setState(() => _isLoadingRequests = true);
+    try {
+      final data = await _chatService.getPendingRequests();
+      if (mounted) {
+        setState(() {
+          _pendingRequests = data;
+          _isLoadingRequests = false;
+        });
+        if (onUpdate != null) onUpdate();
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoadingRequests = false);
+    }
+  }
+
+  void _connectWebSocket(String studentUserId) async {
+    _disconnectWebSocket();
+    final token = await _chatService.getAuthToken();
+    if (token == null) return;
+    final wsUrl = _chatService.baseUrl.replaceFirst('http', 'ws');
+    final uri = Uri.parse('$wsUrl/api/v1/mentorship/chat/$studentUserId/?token=$token');
+    try {
+      _channel = WebSocketChannel.connect(uri);
+      setState(() => _isConnected = true);
+      _wsSub = _channel!.stream.listen((raw) {
+        final data = jsonDecode(raw);
+        if (data['event'] == 'NEW_MESSAGE') {
+          setState(() {
+            _messages.add(ChatMessage.fromJson(data, _currentUserId));
+          });
+          _scrollToBottom();
+        }
+      }, onDone: () => setState(() => _isConnected = false));
+    } catch (e) {
+      debugPrint("WebSocket Connection Error: $e");
+    }
+  }
+
+  void _disconnectWebSocket() {
+    _wsSub?.cancel();
+    _channel?.sink.close(ws_status.goingAway);
+    _isConnected = false;
+  }
+
+  Future<void> _loadHistory(String studentUserId) async {
+    setState(() => _isLoadingHistory = true);
+    try {
+      final history = await _chatService.getChatMessages(studentUserId);
+      setState(() {
+        _messages = history.map((m) => ChatMessage.fromJson(m, _currentUserId)).toList();
+        _isLoadingHistory = false;
+      });
+      _scrollToBottom();
+    } catch (e) {
+      setState(() => _isLoadingHistory = false);
+    }
+  }
+
+  void _handleSendMessage() {
+    if (_inputText.trim().isEmpty || !_isConnected) return;
+    final payload = jsonEncode({'message': _inputText.trim()});
+    _channel?.sink.add(payload);
+    _messageController.clear();
+    setState(() => _inputText = "");
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  void _handleRequestAction(String requestId, bool isAccept) async {
+    final backupList = List.from(_pendingRequests);
+    setState(() => _pendingRequests.removeWhere((req) => req['request_id'] == requestId));
+    final success = isAccept
+        ? await _chatService.acceptRequest(requestId)
+        : await _chatService.rejectRequest(requestId);
+    if (success) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(isAccept ? "Request Accepted!" : "Request Rejected"),
+            backgroundColor: isAccept ? Colors.green : Colors.redAccent));
+      }
+      _fetchRequests();
+      _fetchActiveChats();
+    } else {
+      if (mounted) setState(() => _pendingRequests = backupList);
+    }
+  }
+
+  // ✅ NEW: Smart backend-driven Video Call Logic
+  Future<void> _handleVideoCallClick() async {
+    setState(() => _isJoiningCall = true);
+    try {
+      // 1. Ask backend for all upcoming sessions
+      final sessions = await _mentorService.getUpcomingSessions();
+
+      // 2. Search for a live/upcoming session with THIS specific chat partner
+      Map<String, dynamic>? activeSession;
+      for (var s in sessions) {
+        if (s['other_user_id']?.toString() == _currentChatPartnerId) {
+          // If it is live or starting in the next 5 minutes
+          if (s['is_live'] == true || (s['seconds_until_start'] != null && s['seconds_until_start'] <= 300)) {
+            activeSession = s;
+            break;
+          }
+        }
+      }
+
+      // 3. If no session is active, politely reject the call attempt
+      if (activeSession == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("No active scheduled session right now. Book a slot first!"),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        setState(() => _isJoiningCall = false);
+        return;
+      }
+
+      // 4. We found a valid session! Get the token and launch Dyte
+      final sessionId = activeSession['session_id'].toString();
+      final result = await _mentorService.joinVideoSession(sessionId);
+
+      if (result != null && mounted) {
+        final String dyteToken = result['token'] ?? '';
+
+        // ✅ AWAIT the video call screen. The code pauses here while they chat.
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => VideoCallScreen(token: dyteToken),
+          ),
+        );
+
+        // ✅ Tell backend the call is over once the screen closes
+        await _mentorService.endVideoSession(sessionId);
+
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Failed to generate video call token. Try again."),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint("VC Error: $e");
+    } finally {
+      if (mounted) setState(() => _isJoiningCall = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async {
+    return PopScope(
+      canPop: !_isViewingIndividualChat,
+      onPopInvoked: (didPop) {
+        if (didPop) return;
         if (_isViewingIndividualChat) {
+          _disconnectWebSocket();
           setState(() => _isViewingIndividualChat = false);
-          return false;
+          widget.onChatToggle?.call(false);
         }
-        return true;
       },
-      child: Scaffold(
-        backgroundColor: _isViewingIndividualChat ? const Color(0xFFE5DDD5) : Colors.white, // Classic Chat BG
-        appBar: _isViewingIndividualChat ? _buildChatDetailAppBar() : _buildChatListAppBar(),
-        body: _isViewingIndividualChat ? _buildIndividualChatView() : _buildChatListView(),
+      child: Stack(
+        children: [
+          Scaffold(
+            backgroundColor: Colors.white,
+            appBar: _buildChatListAppBar(),
+            body: _buildChatListView(),
+          ),
+          if (_isViewingIndividualChat)
+            Positioned.fill(
+              child: Material(
+                child: Scaffold(
+                  backgroundColor: const Color(0xFFF5F7F9),
+                  appBar: _buildChatDetailAppBar(),
+                  body: _buildIndividualChatView(),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
-
-  // --- 1. APP BARS ---
 
   PreferredSizeWidget _buildChatListAppBar() {
     return AppBar(
       backgroundColor: Colors.white,
       elevation: 0,
       title: const Text("Messages",
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 28)),
+          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 26)),
       actions: [
         Stack(
           children: [
@@ -4279,8 +5334,11 @@ class _MentorChatScreenState extends State<MentorChatScreen> {
                 top: 8,
                 child: Container(
                   padding: const EdgeInsets.all(4),
-                  decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                  child: Text("${_pendingRequests.length}", style: const TextStyle(color: Colors.white, fontSize: 10)),
+                  decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(10)),
+                  constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                  child: Text("${_pendingRequests.length}",
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
                 ),
               )
           ],
@@ -4297,156 +5355,203 @@ class _MentorChatScreenState extends State<MentorChatScreen> {
       titleSpacing: 0,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back, color: Colors.black),
-        onPressed: () => setState(() => _isViewingIndividualChat = false),
+        onPressed: () {
+          _disconnectWebSocket();
+          setState(() => _isViewingIndividualChat = false);
+          widget.onChatToggle?.call(false);
+        },
       ),
       title: Row(
         children: [
-          CircleAvatar(radius: 18, backgroundImage: NetworkImage('https://i.pravatar.cc/150?u=$_currentChatPartner')),
+          CircleAvatar(radius: 18, backgroundImage: NetworkImage('https://i.pravatar.cc/150?u=$_currentChatPartnerId')),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(_currentChatPartner, style: const TextStyle(color: Colors.black, fontSize: 16, fontWeight: FontWeight.bold)),
-                const Text("online", style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.w400)),
+                Text(_isConnected ? "online" : "offline", style: TextStyle(color: _isConnected ? Colors.green : Colors.grey, fontSize: 12)),
               ],
             ),
           ),
         ],
       ),
       actions: [
-        IconButton(icon: const Icon(Icons.videocam_rounded, color: AppTheme.mentor), onPressed: () {}),
-        IconButton(icon: const Icon(Icons.call, color: AppTheme.mentor, size: 22), onPressed: () {}),
-        const SizedBox(width: 8),
-      ],
-    );
-  }
-
-  // --- 2. CHAT LIST ---
-
-  Widget _buildChatListView() {
-    return Column(
-      children: [
-        const Divider(height: 1),
-        Expanded(
-          child: ListView.builder(
-            itemCount: _mockChats.length,
-            itemBuilder: (context, index) {
-              final chat = _mockChats[index];
-              return ListTile(
-                leading: CircleAvatar(radius: 28, backgroundImage: NetworkImage('https://i.pravatar.cc/150?img=${chat['img']}')),
-                title: Text(chat['name']!, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 17)),
-                subtitle: Text(chat['msg']!, maxLines: 1, overflow: TextOverflow.ellipsis),
-                trailing: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(chat['time']!, style: TextStyle(color: chat['unread'] == "1" ? AppTheme.mentor : Colors.grey, fontSize: 12)),
-                    const SizedBox(height: 5),
-                    if (chat['unread'] == "1")
-                      Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: const BoxDecoration(color: AppTheme.mentor, shape: BoxShape.circle),
-                        child: const Text("1", style: TextStyle(color: Colors.white, fontSize: 10)),
-                      ),
-                  ],
-                ),
-                onTap: () => setState(() {
-                  _isViewingIndividualChat = true;
-                  _currentChatPartner = chat['name']!;
-                }),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  // --- 3. INDIVIDUAL CHAT VIEW ---
-
-  Widget _buildIndividualChatView() {
-    return Container(
-      decoration: const BoxDecoration(
-        image: DecorationImage(
-          image: NetworkImage("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png"),
-          opacity: 0.06, // Subtle WhatsApp-like pattern
-          fit: BoxFit.cover,
-        ),
-      ),
-      child: Column(
-        children: [
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                _buildMessageBubble("Hi Mentor, I have a doubt regarding the roadmap.", false),
-                _buildMessageBubble("Sure, let's discuss. Which part is confusing?", true),
-                _buildMessageBubble("The section on System Design seems a bit advanced.", false),
-                _buildMessageBubble("Don't worry, we'll break it down. Let's hop on a VC.", true),
-              ],
+        // ✅ NEW: Replaced standard icon with the smart action and loading spinner
+        _isJoiningCall
+            ? const Padding(
+          padding: EdgeInsets.only(right: 20.0),
+          child: Center(
+            child: SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.mentor),
             ),
           ),
-          _buildMessageInput(),
-        ],
+        )
+            : IconButton(
+          icon: const Icon(Icons.videocam_rounded, color: AppTheme.mentor, size: 26),
+          onPressed: _handleVideoCallClick,
+        ),
+        const SizedBox(width: 10),
+      ],
+    );
+  }
+
+  Widget _buildChatListView() {
+    if (_isLoadingChats) return const Center(child: CircularProgressIndicator(color: AppTheme.mentor));
+    if (_activeChats.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: _fetchActiveChats,
+        child: ListView(
+          children: [
+            SizedBox(height: MediaQuery.of(context).size.height * 0.3),
+            const Center(child: Text("No active students yet", style: TextStyle(color: Colors.grey))),
+          ],
+        ),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _fetchActiveChats,
+      child: ListView.builder(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        itemCount: _activeChats.length,
+        itemBuilder: (context, index) {
+          final student = _activeChats[index];
+          final String sId = student['user_id'].toString();
+          final String sName = student['full_name'] ?? "Student";
+
+          return Card(
+            elevation: 0,
+            margin: const EdgeInsets.only(bottom: 12),
+            color: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(
+                  color: AppTheme.mentor.withValues(alpha: 0.15),
+                  width: 1.5
+              ),
+            ),
+            child: ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              leading: Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppTheme.mentor.withValues(alpha: 0.1), width: 2),
+                ),
+                child: CircleAvatar(
+                  radius: 25,
+                  backgroundImage: NetworkImage('https://i.pravatar.cc/150?u=$sId'),
+                ),
+              ),
+              title: Text(sName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF172B4D))),
+              subtitle: Text("Tap to view messages", style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+              trailing: Icon(Icons.chevron_right, color: AppTheme.mentor.withValues(alpha: 0.5)),
+              onTap: () {
+                setState(() {
+                  _isViewingIndividualChat = true;
+                  _currentChatPartner = sName;
+                  _currentChatPartnerId = sId;
+                });
+                widget.onChatToggle?.call(true);
+                _loadHistory(sId);
+                _connectWebSocket(sId);
+              },
+            ),
+          );
+        },
       ),
     );
   }
 
-  Widget _buildMessageBubble(String text, bool isMe) {
+  Widget _buildIndividualChatView() {
+    return Column(
+      children: [
+        Expanded(
+          child: _isLoadingHistory
+              ? const Center(child: CircularProgressIndicator())
+              : ListView.builder(
+            controller: _scrollController,
+            padding: const EdgeInsets.all(16),
+            itemCount: _messages.length,
+            itemBuilder: (context, index) => _buildMessageBubble(_messages[index]),
+          ),
+        ),
+        _buildMessageInput(),
+      ],
+    );
+  }
+
+  Widget _buildMessageBubble(ChatMessage msg) {
     return Align(
-      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+      alignment: msg.isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
         decoration: BoxDecoration(
-          color: isMe ? const Color(0xFFDCF8C6) : Colors.white, // WhatsApp green vs white
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(12),
-            topRight: const Radius.circular(12),
-            bottomLeft: Radius.circular(isMe ? 12 : 0),
-            bottomRight: Radius.circular(isMe ? 0 : 12),
-          ),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 2, offset: const Offset(0, 1))],
-        ),
-        child: Text(text, style: const TextStyle(color: Colors.black87, fontSize: 16)),
+            color: msg.isMe ? AppTheme.mentor : Colors.white,
+            borderRadius: BorderRadius.only(
+              topLeft: const Radius.circular(15),
+              topRight: const Radius.circular(15),
+              bottomLeft: Radius.circular(msg.isMe ? 15 : 0),
+              bottomRight: Radius.circular(msg.isMe ? 0 : 15),
+            ),
+            boxShadow: [
+              BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 5,
+                  offset: const Offset(0, 2)
+              )
+            ]),
+        child: Text(msg.message,
+            style: TextStyle(fontSize: 15, color: msg.isMe ? Colors.white : Colors.black87)),
       ),
     );
   }
 
   Widget _buildMessageInput() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 40),
+      decoration: BoxDecoration(
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 10,
+                offset: const Offset(0, -2)
+            )
+          ]),
       child: Row(
         children: [
           Expanded(
-            child: Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 12),
-                child: TextField(
-                  decoration: InputDecoration(
-                    hintText: "Type a message",
-                    border: InputBorder.none,
-                    prefixIcon: Icon(Icons.emoji_emotions_outlined, color: Colors.grey),
-                  ),
-                ),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(30),
+              ),
+              child: TextField(
+                controller: _messageController,
+                onChanged: (v) => setState(() => _inputText = v),
+                decoration: const InputDecoration(
+                    hintText: "Type a message...", border: InputBorder.none, hintStyle: TextStyle(color: Colors.grey)),
               ),
             ),
           ),
-          const SizedBox(width: 5),
-          const CircleAvatar(
-            backgroundColor: AppTheme.mentor,
-            radius: 25,
-            child: Icon(Icons.mic, color: Colors.white),
+          const SizedBox(width: 10),
+          GestureDetector(
+            onTap: _handleSendMessage,
+            child: CircleAvatar(
+              backgroundColor: AppTheme.mentor,
+              radius: 24,
+              child: Icon(_inputText.trim().isEmpty ? Icons.mic : Icons.send_rounded, color: Colors.white, size: 20),
+            ),
           ),
         ],
       ),
     );
   }
-
-  // --- 4. REQUESTS OVERLAY ---
 
   void _showRequestsOverlay(BuildContext context) {
     showModalBottomSheet(
@@ -4454,63 +5559,54 @@ class _MentorChatScreenState extends State<MentorChatScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.6,
+        height: MediaQuery.of(context).size.height * 0.7,
         decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
-        ),
+            color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
+            Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(10))),
             const SizedBox(height: 20),
-            const Text("Student Requests", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 20),
-
-            // ✅ CONDITIONAL RENDERING FOR NO REQUESTS
-            _pendingRequests.isEmpty
-                ? Expanded(
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons. drafts_outlined, size: 80, color: Colors.grey[300]),
-                    const SizedBox(height: 10),
-                    const Text("No pending requests", style: TextStyle(color: Colors.grey, fontSize: 16)),
-                  ],
+            const Text("Student Requests", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
+            if (_isLoadingRequests && _pendingRequests.isEmpty)
+              const Expanded(child: Center(child: CircularProgressIndicator()))
+            else if (_pendingRequests.isEmpty)
+              const Expanded(child: Center(child: Text("No pending requests")))
+            else
+              Expanded(
+                child: ListView.builder(
+                  itemCount: _pendingRequests.length,
+                  itemBuilder: (context, index) {
+                    final req = _pendingRequests[index];
+                    return Card(
+                      elevation: 0,
+                      color: Colors.grey.shade50,
+                      margin: const EdgeInsets.only(bottom: 12),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(15),
+                          side: BorderSide(color: AppTheme.mentor.withValues(alpha: 0.1))
+                      ),
+                      child: ListTile(
+                        leading: CircleAvatar(backgroundImage: NetworkImage('https://i.pravatar.cc/150?u=${req['student_id']}')),
+                        title: Text(req['student_name'] ?? "New Student", style: const TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: Text(req['message'] ?? "Wants mentorship"),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                                icon: const Icon(Icons.check_circle, color: Colors.green),
+                                onPressed: () => _handleRequestAction(req['request_id'], true)),
+                            IconButton(
+                                icon: const Icon(Icons.cancel, color: Colors.redAccent),
+                                onPressed: () => _handleRequestAction(req['request_id'], false)),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
-            )
-                : Expanded(
-              child: ListView.builder(
-                itemCount: _pendingRequests.length,
-                itemBuilder: (context, index) {
-                  final req = _pendingRequests[index];
-                  return ListTile(
-                    contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                    leading: CircleAvatar(radius: 25, backgroundImage: NetworkImage('https://i.pravatar.cc/150?img=${req['img']}')),
-                    title: Text(req['name']!, style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text("Wants help with ${req['subject']}"),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.check_circle, color: Colors.green, size: 32),
-                          onPressed: () {
-                            // Add logic to move to chat list
-                            Navigator.pop(context);
-                          },
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.cancel, color: Colors.redAccent, size: 32),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
           ],
         ),
       ),
@@ -4525,6 +5621,9 @@ FILE: screens\mentor_list_screen.dart
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../services/assessment_service.dart';
+import 'chat_screen.dart';
+import 'student_session_screen.dart';
+import 'student_schedule_screen.dart'; // ✅ Added import for the new schedule screen
 
 class MentorListScreen extends StatefulWidget {
   const MentorListScreen({super.key});
@@ -4535,10 +5634,13 @@ class MentorListScreen extends StatefulWidget {
 
 class _MentorListScreenState extends State<MentorListScreen> {
   final AssessmentService _apiService = AssessmentService();
-  List<dynamic> _allMentors = [];
-  bool _isLoading = true;
 
-  // ✅ Local state to track sent requests
+  List<dynamic> _allMentors = [];
+
+  // ✅ Each entry: { user_id, full_name, role, mentor_profile_id (enriched) }
+  List<Map<String, String>> _myMentors = [];
+
+  bool _isLoading = true;
   final Set<String> _sentRequestIds = {};
 
   @override
@@ -4553,25 +5655,81 @@ class _MentorListScreenState extends State<MentorListScreen> {
       final aspiration = profile['aspiration_data'] ?? {};
       String goal = aspiration['dream_career'] ?? "technology";
 
-      // 1. Fetch all recommended mentors
-      final data = await _apiService.searchMentors(careerGoal: goal);
+      // Fetch all three in parallel for speed
+      final results = await Future.wait([
+        _apiService.searchMentors(careerGoal: goal),
+        _apiService.getAcceptedConnections(),
+        _apiService.getSentRequests(),
+      ]);
 
-      // 2. Fetch existing connections/requests from backend to persist state [cite: 41, 45]
-      // This ensures that even after logout/login, requested mentors remain in 'Requested' state
-      final existingConnections = await _apiService.getSentRequests();
+      final List<dynamic> rawAllMentors    = results[0] as List<dynamic>;
+      final List<dynamic> acceptedRaw      = results[1] as List<dynamic>;
+      final List<dynamic> existingRequests = results[2] as List<dynamic>;
+
+      // Build a lookup: user_id → mentor_profile_id (Mentor.id)
+      // The searchMentors response includes BOTH id (profile) and user_id
+      final Map<String, String> userIdToProfileId = {};
+      for (final m in rawAllMentors) {
+        final uid = m['user_id']?.toString() ?? '';
+        final pid = m['id']?.toString() ?? '';
+        if (uid.isNotEmpty && pid.isNotEmpty) {
+          userIdToProfileId[uid] = pid;
+        }
+      }
+
+      // ✅ Enrich accepted connections with mentor_profile_id
+      // acceptedRaw items: { user_id, full_name, role, request_type }
+      // We need mentor_profile_id to call the availability API later
+      final List<Map<String, String>> enrichedMyMentors = [];
+      for (final m in acceptedRaw) {
+        final String userId = m['user_id']?.toString() ?? '';
+        String profileId = userIdToProfileId[userId] ?? '';
+
+        // If not found in the search results (mentor may not show up in this
+        // career-specific search), try a direct lookup
+        if (profileId.isEmpty && userId.isNotEmpty) {
+          debugPrint(
+              "⚠️ mentor_profile_id not in search results for user_id=$userId — fetching directly");
+          final lookedUp =
+          await _apiService.getMentorProfileIdByUserId(userId);
+          profileId = lookedUp ?? '';
+        }
+
+        debugPrint(
+            "✅ MY MENTOR: user_id=$userId, profile_id=$profileId, name=${m['full_name']}");
+
+        enrichedMyMentors.add({
+          "user_id":           userId,
+          "mentor_profile_id": profileId,
+          "name":              m['full_name']?.toString() ?? "Expert",
+          "role":              m['role']?.toString() ?? "Mentor",
+          "request_type":      m['request_type']?.toString() ?? "",
+        });
+      }
+
+      // Build the accepted user_id set to filter from ALL MENTORS tab
+      final acceptedUserIds =
+      enrichedMyMentors.map((m) => m['user_id']!).toSet();
+
+      // Filter ALL MENTORS: remove those already accepted
+      final filteredAll = rawAllMentors.where((m) {
+        return !acceptedUserIds.contains(m['user_id']?.toString() ?? '');
+      }).toList();
+
+      // Populate pending request IDs
+      final Set<String> pendingIds = {};
+      for (final conn in existingRequests) {
+        final mId = conn['mentor_id']?.toString();
+        if (mId != null) pendingIds.add(mId);
+      }
 
       if (mounted) {
         setState(() {
-          _allMentors = data;
-
-          // 3. Populate requested set from DB records [cite: 47, 48]
-          for (var conn in existingConnections) {
-            String? mId = conn['user_id']?.toString();
-            if (mId != null) {
-              _sentRequestIds.add(mId);
-            }
-          }
-
+          _myMentors      = enrichedMyMentors;
+          _allMentors     = filteredAll;
+          _sentRequestIds
+            ..clear()
+            ..addAll(pendingIds);
           _isLoading = false;
         });
       }
@@ -4580,6 +5738,67 @@ class _MentorListScreenState extends State<MentorListScreen> {
       if (mounted) setState(() => _isLoading = false);
     }
   }
+
+  // ── Navigation ─────────────────────────────────────────────────────────────
+
+  void _openChat({
+    required String userId,
+    required String name,
+    required String role,
+    required String avatarUrl,
+  }) {
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (_, animation, __) => ChatScreen(
+          otherUserId:   userId,
+          otherUserName: name,
+          otherUserRole: role,
+          avatarUrl:     avatarUrl,
+        ),
+        transitionsBuilder: (_, animation, __, child) {
+          return SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(1.0, 0.0),
+              end:   Offset.zero,
+            ).animate(
+                CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+            child: child,
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 350),
+      ),
+    );
+  }
+
+  void _openSessionScreen({
+    required String mentorProfileId,
+    required String mentorUserId,
+    required String mentorName,
+  }) {
+    if (mentorProfileId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              "Could not find mentor's profile. Please try again later."),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => StudentSessionScreen(
+          mentorProfileId: mentorProfileId, // ✅ Mentor.id (profile UUID)
+          mentorUserId:    mentorUserId,    // ✅ Mentor.user_id (for avatar/chat)
+          mentorName:      mentorName,
+        ),
+      ),
+    );
+  }
+
+  // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -4596,14 +5815,32 @@ class _MentorListScreenState extends State<MentorListScreen> {
             style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900),
           ),
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black, size: 20),
+            icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                color: Colors.black, size: 20),
             onPressed: () => Navigator.pop(context),
           ),
+          // ✅ NEW: Added the Calendar icon to access My Schedule
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.edit_calendar_rounded, color: AppTheme.student),
+              tooltip: "My Schedule",
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const StudentScheduleScreen(),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(width: 8),
+          ],
           bottom: TabBar(
             indicatorColor: AppTheme.student,
-            labelColor: AppTheme.student,
+            labelColor:     AppTheme.student,
             unselectedLabelColor: Colors.grey,
-            labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            labelStyle:
+            const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
             tabs: const [
               Tab(text: "ALL MENTORS"),
               Tab(text: "MY MENTORS"),
@@ -4611,7 +5848,8 @@ class _MentorListScreenState extends State<MentorListScreen> {
           ),
         ),
         body: _isLoading
-            ? const Center(child: CircularProgressIndicator(color: AppTheme.student))
+            ? const Center(
+            child: CircularProgressIndicator(color: AppTheme.student))
             : TabBarView(
           children: [
             _buildAllMentorsTab(),
@@ -4622,66 +5860,104 @@ class _MentorListScreenState extends State<MentorListScreen> {
     );
   }
 
+  // ── All Mentors tab ────────────────────────────────────────────────────────
+
   Widget _buildAllMentorsTab() {
     if (_allMentors.isEmpty) {
-      return const Center(child: Text("No mentors found matching your goals."));
+      return const Center(
+          child: Text("No new mentors found matching your goals."));
     }
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
       itemCount: _allMentors.length,
       itemBuilder: (context, index) {
         final m = _allMentors[index];
-        final String mentorId = m['id'].toString(); // ✅ Unique ID
-        final bool isRequested = _sentRequestIds.contains(mentorId);
+        final String mentorProfileId = m['id']?.toString() ?? '';
+        final String userId          = m['user_id']?.toString() ?? '';
+        final bool isRequested       = _sentRequestIds.contains(mentorProfileId);
 
-        return _buildMentorProfessionalCard(
-          context,
-          {
-            "id": mentorId,
-            "name": m['full_name'] ?? "Expert",
-            "role": m['expertise'] ?? "Professional",
-            "image": 'https://i.pravatar.cc/150?u=$mentorId',
-            "rating": (m['rating'] ?? 0.0).toString(),
-            "sessions": "${m['years_experience']} Yrs Exp."
-          },
-          isMyMentorTab: false,
-          isRequested: isRequested,
+        return _buildMentorCard(
+          mentorProfileId: mentorProfileId,
+          userId:          userId,
+          name:            m['full_name']?.toString() ?? "Expert",
+          role:            m['expertise']?.toString() ?? "Professional",
+          rating:          (m['rating'] ?? 0.0).toString(),
+          sessionLabel:    "${m['years_experience'] ?? 0} Yrs Exp.",
+          isMyMentorTab:   false,
+          isRequested:     isRequested,
         );
       },
     );
   }
 
+  // ── My Mentors tab ─────────────────────────────────────────────────────────
+
   Widget _buildMyMentorsTab() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.people_outline_rounded, size: 80, color: Colors.grey.shade300),
-          const SizedBox(height: 16),
-          const Text(
-            "No mentors assigned yet",
-            style: TextStyle(
-              color: Colors.grey,
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
+    if (_myMentors.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.people_outline_rounded,
+                size: 80, color: Colors.grey.shade300),
+            const SizedBox(height: 16),
+            const Text(
+              "No mentors assigned yet",
+              style: TextStyle(
+                  color: Colors.grey,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600),
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+      itemCount: _myMentors.length,
+      itemBuilder: (context, index) {
+        final m = _myMentors[index];
+        return _buildMentorCard(
+          mentorProfileId: m['mentor_profile_id']!,
+          userId:          m['user_id']!,
+          name:            m['name']!,
+          role:            m['role']!,
+          rating:          "5.0",
+          sessionLabel:    "Active Connection",
+          isMyMentorTab:   true,
+          isRequested:     false,
+        );
+      },
     );
   }
 
-  Widget _buildMentorProfessionalCard(
-      BuildContext context,
-      Map<String, String> mentor,
-      {required bool isMyMentorTab, bool isRequested = false}
-      ) {
+  // ── Shared card widget ─────────────────────────────────────────────────────
+
+  Widget _buildMentorCard({
+    required String mentorProfileId,
+    required String userId,
+    required String name,
+    required String role,
+    required String rating,
+    required String sessionLabel,
+    required bool   isMyMentorTab,
+    required bool   isRequested,
+  }) {
+    final String avatarUrl = 'https://i.pravatar.cc/150?u=$userId';
+
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(28),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 20, offset: const Offset(0, 10))],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          )
+        ],
       ),
       child: Column(
         children: [
@@ -4689,25 +5965,41 @@ class _MentorListScreenState extends State<MentorListScreen> {
             padding: const EdgeInsets.all(20),
             child: Row(
               children: [
-                CircleAvatar(radius: 35, backgroundImage: NetworkImage(mentor['image']!)),
+                CircleAvatar(
+                    radius: 35,
+                    backgroundImage: NetworkImage(avatarUrl)),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(mentor['name']!, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+                      Text(name,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w900, fontSize: 18)),
                       const SizedBox(height: 4),
-                      Text(mentor['role']!, style: TextStyle(color: Colors.grey.shade600, fontSize: 13, fontWeight: FontWeight.w500)),
+                      Text(role,
+                          style: TextStyle(
+                              color: Colors.grey.shade600,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500)),
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          const Icon(Icons.star_rounded, color: Colors.orange, size: 16),
+                          const Icon(Icons.star_rounded,
+                              color: Colors.orange, size: 16),
                           const SizedBox(width: 4),
-                          Text(mentor['rating']!, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                          Text(rating,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 12)),
                           const SizedBox(width: 12),
-                          const Icon(Icons.history_edu_rounded, color: Colors.grey, size: 16),
+                          const Icon(Icons.history_edu_rounded,
+                              color: Colors.grey, size: 16),
                           const SizedBox(width: 4),
-                          Text(mentor['sessions']!, style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+                          Text(sessionLabel,
+                              style: const TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold)),
                         ],
                       ),
                     ],
@@ -4718,61 +6010,77 @@ class _MentorListScreenState extends State<MentorListScreen> {
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            decoration: const BoxDecoration(color: Color(0xFFF5F9FF), borderRadius: BorderRadius.vertical(bottom: Radius.circular(28))),
+            decoration: const BoxDecoration(
+              color: Color(0xFFF5F9FF),
+              borderRadius:
+              BorderRadius.vertical(bottom: Radius.circular(28)),
+            ),
             child: Row(
               children: [
+                // Left button: Request Session (my mentors) / View Profile (all)
                 Expanded(
                   child: _buildActionButton(
-                    icon: isMyMentorTab ? Icons.calendar_today_outlined : Icons.person_outline_rounded,
-                    label: isMyMentorTab ? "Request Session" : "View Profile",
+                    icon: isMyMentorTab
+                        ? Icons.calendar_today_outlined
+                        : Icons.person_outline_rounded,
+                    label:
+                    isMyMentorTab ? "Request Session" : "View Profile",
                     color: AppTheme.student,
-                    onTap: () {},
+                    onTap: () {
+                      if (isMyMentorTab) {
+                        _openSessionScreen(
+                          mentorProfileId: mentorProfileId,
+                          mentorUserId:    userId,
+                          mentorName:      name,
+                        );
+                      }
+                    },
                   ),
                 ),
                 const SizedBox(width: 10),
+                // Right button: Chat (my mentors) / Request Mentorship (all)
                 Expanded(
                   child: _buildActionButton(
-                    // ✅ Button UI changes based on request status
                     icon: isMyMentorTab
                         ? Icons.chat_bubble_outline_rounded
-                        : (isRequested ? Icons.check_circle_outline_rounded : Icons.add_task_rounded),
+                        : (isRequested
+                        ? Icons.check_circle_outline_rounded
+                        : Icons.add_task_rounded),
                     label: isMyMentorTab
                         ? "Chat Now"
-                        : (isRequested ? "Requested" : "Request Mentorship"),
-                    color: isRequested ? Colors.grey.shade400 : Colors.white,
-                    textColor: isRequested ? Colors.white : AppTheme.student,
+                        : (isRequested
+                        ? "Requested"
+                        : "Request Mentorship"),
+                    color: isRequested
+                        ? Colors.grey.shade400
+                        : Colors.white,
+                    textColor:
+                    isRequested ? Colors.white : AppTheme.student,
                     isOutlined: !isRequested,
                     onTap: () async {
-                      if (!isMyMentorTab && !isRequested) {
-                        // 1. Call the backend service [cite: 109]
-                        final bool success = await _apiService.requestMentorship(mentor['id']!);
-
-                        if (success) {
-                          // 2. If successful, update local UI state
-                          setState(() {
-                            _sentRequestIds.add(mentor['id']!);
-                          });
-
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text("Mentorship request sent successfully!"),
-                                backgroundColor: Colors.green,
-                                behavior: SnackBarBehavior.floating,
-                              ),
-                            );
-                          }
-                        } else {
-                          // Handle failure (e.g., duplicate request error from backend )
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text("Failed to send request. You may already have a pending request."),
-                                backgroundColor: Colors.red,
-                                behavior: SnackBarBehavior.floating,
-                              ),
-                            );
-                          }
+                      if (isMyMentorTab) {
+                        _openChat(
+                          userId:    userId,
+                          name:      name,
+                          role:      'mentor',
+                          avatarUrl: avatarUrl,
+                        );
+                        return;
+                      }
+                      if (!isRequested) {
+                        final bool success =
+                        await _apiService.requestMentorship(
+                            mentorProfileId);
+                        if (success && mounted) {
+                          setState(
+                                  () => _sentRequestIds.add(mentorProfileId));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                  "Mentorship request sent successfully!"),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
                         }
                       }
                     },
@@ -4787,28 +6095,39 @@ class _MentorListScreenState extends State<MentorListScreen> {
   }
 
   Widget _buildActionButton({
-    required IconData icon,
-    required String label,
-    required Color color,
+    required IconData  icon,
+    required String    label,
+    required Color     color,
     required VoidCallback onTap,
-    Color textColor = Colors.white,
-    bool isOutlined = false,
+    Color   textColor  = Colors.white,
+    bool    isOutlined = false,
   }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
         height: 48,
         decoration: BoxDecoration(
-          color: isOutlined ? Colors.white : color,
+          color:        isOutlined ? Colors.white : color,
           borderRadius: BorderRadius.circular(16),
-          border: isOutlined ? Border.all(color: color.withOpacity(0.2)) : null,
+          border: isOutlined
+              ? Border.all(color: color.withValues(alpha: 0.2))
+              : null,
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(icon, size: 18, color: textColor),
             const SizedBox(width: 8),
-            Text(label, style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 13)),
+            Flexible(
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    color:      textColor,
+                    fontWeight: FontWeight.bold,
+                    fontSize:   13),
+              ),
+            ),
           ],
         ),
       ),
@@ -4822,6 +6141,15 @@ FILE: screens\mentor_schedule_screen.dart
 
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import '../services/mentor_service.dart';
+import 'video_call_screen.dart';
+
+// ─── Day-of-week helper ───────────────────────────────────────────────────────
+
+const List<String> _dayNames = ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const List<String> _dayFull  = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+// ─── Screen ───────────────────────────────────────────────────────────────────
 
 class MentorScheduleScreen extends StatefulWidget {
   const MentorScheduleScreen({super.key});
@@ -4830,177 +6158,633 @@ class MentorScheduleScreen extends StatefulWidget {
   State<MentorScheduleScreen> createState() => _MentorScheduleScreenState();
 }
 
-class _MentorScheduleScreenState extends State<MentorScheduleScreen> {
-  DateTime selectedDate = DateTime.now();
+class _MentorScheduleScreenState extends State<MentorScheduleScreen>
+    with SingleTickerProviderStateMixin {
+  final MentorService _service = MentorService();
+
+  // ── Tab controller ─────────────────────────────────────────────────────────
+  late TabController _tabController;
+
+  // ── Upcoming sessions ──────────────────────────────────────────────────────
+  List<dynamic> _upcomingSessions = [];
+  bool _isLoadingSessions = true;
+
+  // ── Pending session requests ───────────────────────────────────────────────
+  List<dynamic> _pendingRequests = [];
+  bool _isLoadingRequests = true;
+
+  // ── Availability slots (Raw from DB) ───────────────────────────────────────
+  List<dynamic> _mySlots = [];
+  bool _isLoadingSlots = true;
+  bool _isSlotsExpanded = false;
+
+  // ── Date UI state ──────────────────────────────────────────────────────────
+  DateTime _selectedDate = DateTime.now();
+
+  // ── Join VC loading state ──────────────────────────────────────────────────
+  String? _joiningSessionId;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    _loadAll();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadAll() async {
+    await Future.wait([
+      _fetchSessions(),
+      _fetchPendingRequests(),
+      _fetchMySlots(), // This populates the "My Availability" bar
+    ]);
+  }
+
+  Future<void> _fetchMySlots() async {
+    if (!mounted) return;
+    setState(() => _isLoadingSlots = true);
+
+    // ✅ Logic: Pass "me" to the service to fetch the logged-in mentor's UUID availability
+    try {
+      final data = await _service.getMentorAvailability("me");
+      if (mounted) {
+        setState(() {
+          _mySlots = data;
+          _isLoadingSlots = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("❌ Error fetching mentor slots: $e");
+      if (mounted) setState(() => _isLoadingSlots = false);
+    }
+  }
+
+  Future<void> _fetchSessions() async {
+    setState(() => _isLoadingSessions = true);
+    final data = await _service.getUpcomingSessions();
+    if (mounted) setState(() {
+      _upcomingSessions = data;
+      _isLoadingSessions = false;
+    });
+  }
+
+  Future<void> _fetchPendingRequests() async {
+    setState(() => _isLoadingRequests = true);
+    final data = await _service.getPendingSessionRequests();
+    if (mounted) setState(() {
+      _pendingRequests = data;
+      _isLoadingRequests = false;
+    });
+  }
+
+  // ── Approve a session request ──────────────────────────────────────────────
+
+  Future<void> _handleApprove(Map<String, dynamic> req) async {
+    final String reqId = req['request_id']?.toString() ?? '';
+    if (reqId.isEmpty) return;
+
+    final backup = List.from(_pendingRequests);
+    setState(() =>
+        _pendingRequests.removeWhere((r) => r['request_id'] == req['request_id']));
+
+    final result = await _service.approveSessionRequest(reqId);
+
+    if (result != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              "✅ Session approved for ${req['student_name'] ?? 'student'}!"),
+          backgroundColor: Colors.green,
+        ),
+      );
+      _loadAll(); // Re-fetch to update "Booked" status in the status bar
+    } else {
+      if (mounted) {
+        setState(() => _pendingRequests = backup);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text("Failed to approve. Please try again."),
+              backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  // ── Join video session ─────────────────────────────────────────────────────
+
+  Future<void> _joinSession(Map<String, dynamic> session) async {
+    final String sessionId = session['session_id']?.toString() ?? '';
+    if (sessionId.isEmpty) return;
+
+    setState(() => _joiningSessionId = sessionId);
+
+    final result = await _service.joinVideoSession(sessionId);
+
+    if (mounted) setState(() => _joiningSessionId = null);
+
+    if (result != null && mounted) {
+      final String dyteToken = result['token'] ?? '';
+
+      // ✅ AWAIT the video call screen. Code pauses here while the VC is active.
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => VideoCallScreen(token: dyteToken),
+        ),
+      );
+
+      // ✅ Hit the backend to complete the session once they return to this screen
+      await _service.endVideoSession(sessionId);
+
+      // ✅ Refresh the mentor's dashboard to reflect the completed session
+      _loadAll();
+
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text("Could not start session. Please try again."),
+            backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  // ── Set availability ───────────────────────────────────────────────────────
+
+  void _showAddAvailabilitySheet() {
+    int selectedDay = DateTime.now().weekday;
+    TimeOfDay startTime = const TimeOfDay(hour: 9, minute: 0);
+    // ✅ Automatically default to 1 hour later
+    TimeOfDay endTime   = const TimeOfDay(hour: 10, minute: 0);
+    bool _isSaving = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 40),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(35)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                          color: Colors.grey[300],
+                          borderRadius: BorderRadius.circular(10))),
+                ),
+                const SizedBox(height: 25),
+                const Text("Set Your Availability",
+                    style:
+                    TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 6),
+                const Text(
+                    "Select a start time. Each slot is strictly 1 hour long.",
+                    style: TextStyle(color: Colors.grey, fontSize: 13)),
+                const SizedBox(height: 24),
+
+                _buildInputLabel("Day of Week"),
+                const SizedBox(height: 8),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: List.generate(7, (i) {
+                      final day = i + 1;
+                      final isSelected = selectedDay == day;
+                      return GestureDetector(
+                        onTap: () => setSheet(() => selectedDay = day),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          margin: const EdgeInsets.only(right: 8),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? AppTheme.mentor
+                                : const Color(0xFFF8F9FB),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                                color: isSelected
+                                    ? AppTheme.mentor
+                                    : Colors.grey.shade200),
+                          ),
+                          child: Text(
+                            _dayNames[day],
+                            style: TextStyle(
+                                color: isSelected ? Colors.white : Colors.black87,
+                                fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildInputLabel("Start Time"),
+                          const SizedBox(height: 8),
+                          GestureDetector(
+                            onTap: () async {
+                              final t = await showTimePicker(
+                                  context: ctx, initialTime: startTime);
+                              if (t != null) {
+                                setSheet(() {
+                                  startTime = t;
+                                  // ✅ Automatically calculate end time (1 hour later)
+                                  endTime = TimeOfDay(hour: (t.hour + 1) % 24, minute: t.minute);
+                                });
+                              }
+                            },
+                            child: _buildTimeBox(startTime),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // ✅ Updated label to show it's fixed
+                          _buildInputLabel("End Time (1 hr fixed)"),
+                          const SizedBox(height: 8),
+                          // ✅ Removed the GestureDetector so the user CANNOT click and change it!
+                          Opacity(
+                            opacity: 0.6, // Makes it look "disabled" or "read-only"
+                            child: _buildTimeBox(endTime),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 28),
+
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: ElevatedButton(
+                    onPressed: _isSaving
+                        ? null
+                        : () async {
+                      final String start =
+                          "${startTime.hour.toString().padLeft(2, '0')}:${startTime.minute.toString().padLeft(2, '0')}:00";
+                      final String end =
+                          "${endTime.hour.toString().padLeft(2, '0')}:${endTime.minute.toString().padLeft(2, '0')}:00";
+
+                      if (selectedDay == DateTime.now().weekday) {
+                        if (startTime.hour <= DateTime.now().hour) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text("Today's slots must start at least 1 hour from now.")),
+                          );
+                          return;
+                        }
+                      }
+
+                      setSheet(() => _isSaving = true);
+
+                      final success =
+                      await _service.setAvailability([
+                        {
+                          "day_of_week": selectedDay,
+                          "start_time": start,
+                          "end_time": end,
+                        }
+                      ]);
+
+                      if (mounted) Navigator.pop(ctx);
+
+                      if (success && mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                                "✅ Availability set for ${_dayFull[selectedDay]}!"),
+                            backgroundColor: AppTheme.mentor,
+                          ),
+                        );
+                        _loadAll(); // Added refresh
+                      } else if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content: Text(
+                                  "Failed to save availability. Check time ranges."),
+                              backgroundColor: Colors.red),
+                        );
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.mentor,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18)),
+                    ),
+                    child: _isSaving
+                        ? const SizedBox(
+                        height: 22,
+                        width: 22,
+                        child: CircularProgressIndicator(
+                            color: Colors.white, strokeWidth: 2))
+                        : const Text("Save Availability",
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF4F7F6),
-      // 1. FAB FOR ADDING SCHEDULE
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddSessionSheet(context),
+        onPressed: _showAddAvailabilitySheet,
         backgroundColor: AppTheme.mentor,
         icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text("Add Session", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        label: const Text("Set Availability",
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
-      body: CustomScrollView(
-        physics: const BouncingScrollPhysics(),
-        slivers: [
-          _buildSliverAppBar(context),
-
-          // 2. MODERN HORIZONTAL DATE PICKER WITH "OPEN CALENDAR" ICON
+      body: NestedScrollView(
+        headerSliverBuilder: (_, __) => [
+          _buildSliverAppBar(),
+          _buildDateHeader(),
+          // --- Availability Status Bar ---
           SliverToBoxAdapter(
-            child: _buildEnhancedDateHeader(),
+            child: _buildAvailabilityStatusBar(),
           ),
+          SliverPersistentHeader(
+            delegate: _TabBarDelegate(
+              TabBar(
+                controller: _tabController,
+                indicatorColor: AppTheme.mentor,
+                labelColor: AppTheme.mentor,
+                unselectedLabelColor: Colors.grey,
+                labelStyle: const TextStyle(
+                    fontWeight: FontWeight.bold, fontSize: 13),
+                tabs: [
+                  Tab(
+                    text: _pendingRequests.isEmpty
+                        ? "REQUESTS"
+                        : "REQUESTS  (${_pendingRequests.length})",
+                  ),
+                  const Tab(text: "UPCOMING"),
+                ],
+              ),
+            ),
+            pinned: true,
+          ),
+        ],
+        body: TabBarView(
+          controller: _tabController,
+          children: [
+            _buildRequestsTab(),
+            _buildUpcomingTab(),
+          ],
+        ),
+      ),
+    );
+  }
 
-          // 3. THE SESSIONS LIST
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                _buildTimelineItem(
-                  time: "10:00 AM",
-                  student: "Rohan Das",
-                  topic: "Cybersecurity Roadmap",
-                  isCompleted: true,
+  // ── Availability Status Bar Logic ──────────────────────────────────────────
+
+  Widget _buildAvailabilityStatusBar() {
+    final int freeCount = _mySlots.where((s) => s['is_booked'] == false).length;
+    final int bookedCount = _mySlots.where((s) => s['is_booked'] == true).length;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 20)],
+      ),
+      child: Column(
+        children: [
+          GestureDetector(
+            onTap: () => setState(() => _isSlotsExpanded = !_isSlotsExpanded),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.calendar_today_rounded, color: AppTheme.mentor, size: 20),
+                    const SizedBox(width: 12),
+                    const Text("My Availability", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                  ],
                 ),
-                _buildTimelineItem(
-                  time: "04:30 PM",
-                  student: "Alex",
-                  topic: "UI/UX Case Study Review",
-                  isLive: true,
-                ),
-                _buildTimelineItem(
-                  time: "06:00 PM",
-                  student: "Priya Sharma",
-                  topic: "Portfolio Feedback",
-                  isLocked: true,
-                ),
-                const SizedBox(height: 120),
-              ]),
+                Icon(_isSlotsExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, color: Colors.grey),
+              ],
             ),
           ),
+          if (_isSlotsExpanded) ...[
+            const SizedBox(height: 16),
+            if (_isLoadingSlots)
+              const Center(child: CircularProgressIndicator(strokeWidth: 2))
+            else if (_mySlots.isEmpty)
+              const Text("No slots created yet", style: TextStyle(color: Colors.grey, fontSize: 12))
+            else
+              SizedBox(
+                height: 80,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _mySlots.length,
+                  itemBuilder: (context, index) {
+                    final slot = _mySlots[index];
+                    final bool isBooked = slot['is_booked'] ?? false;
+                    return Container(
+                      width: 100,
+                      margin: const EdgeInsets.only(right: 12),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: isBooked ? Colors.orange.withValues(alpha: 0.1) : Colors.green.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: isBooked ? Colors.orange.withValues(alpha: 0.3) : Colors.green.withValues(alpha: 0.3)),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(_dayNames[slot['day_of_week']], style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                          Text(slot['start_time'].toString().substring(0, 5), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900)),
+                          const SizedBox(height: 2),
+                          Text(isBooked ? "BOOKED" : "FREE",
+                              style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: isBooked ? Colors.orange : Colors.green)),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ] else ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                _buildStatusChip("${freeCount} Free", Colors.green),
+                const SizedBox(width: 10),
+                _buildStatusChip("${bookedCount} Booked", Colors.orange),
+              ],
+            ),
+          ]
         ],
       ),
     );
   }
 
-  // --- COMPONENT: SLIVER APP BAR ---
-  Widget _buildSliverAppBar(BuildContext context) {
+  Widget _buildStatusChip(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
+      child: Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold)),
+    );
+  }
+
+  // ── Existing Helper UI ─────────────────────────────────────────────────────
+
+  Widget _buildSliverAppBar() {
     return SliverAppBar(
       backgroundColor: const Color(0xFFF4F7F6),
       elevation: 0,
       pinned: true,
-      title: const Text("My Schedule", style: TextStyle(color: Color(0xFF1A2138), fontWeight: FontWeight.w900, fontSize: 22)),
+      title: const Text("My Schedule",
+          style: TextStyle(
+              color: Color(0xFF1A2138),
+              fontWeight: FontWeight.w900,
+              fontSize: 22)),
       actions: [
         IconButton(
-          icon: const Icon(Icons.tune_rounded, color: AppTheme.mentor),
-          onPressed: () {}, // Filter options (Video calls only, etc.)
+          icon: const Icon(Icons.refresh_rounded, color: AppTheme.mentor),
+          onPressed: _loadAll,
         ),
       ],
     );
   }
 
-  // --- COMPONENT: ENHANCED DATE HEADER ---
-  Widget _buildEnhancedDateHeader() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 20)],
-      ),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text("April 2026", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
-              GestureDetector(
-                onTap: () async {
-                  final DateTime? picked = await showDatePicker(
-                    context: context,
-                    initialDate: selectedDate,
-                    firstDate: DateTime(2025),
-                    lastDate: DateTime(2027),
-                  );
-                  if (picked != null) setState(() => selectedDate = picked);
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: AppTheme.mentor.withOpacity(0.1), shape: BoxShape.circle),
-                  child: const Icon(Icons.calendar_month_rounded, color: AppTheme.mentor, size: 20),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          // Simple custom horizontal week view placeholder
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: List.generate(7, (index) {
-              bool isToday = index == 2;
-              return Column(
-                children: [
-                  Text(["M", "T", "W", "T", "F", "S", "S"][index], style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  Container(
-                    width: 35, height: 35,
-                    decoration: BoxDecoration(
-                      color: isToday ? AppTheme.mentor : Colors.transparent,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Center(
-                      child: Text("${index + 29}", style: TextStyle(color: isToday ? Colors.white : Colors.black, fontWeight: FontWeight.bold)),
-                    ),
-                  )
-                ],
-              );
-            }),
-          )
-        ],
-      ),
-    );
-  }
-
-  // --- COMPONENT: THE ADD SESSION SHEET ---
-  void _showAddSessionSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        padding: const EdgeInsets.fromLTRB(24, 12, 24, 40),
-        decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(35))),
+  Widget _buildDateHeader() {
+    return SliverToBoxAdapter(
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: [
+            BoxShadow(
+                color: Colors.black.withValues(alpha: 0.02),
+                blurRadius: 20)
+          ],
+        ),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)))),
-            const SizedBox(height: 25),
-            const Text("Schedule New Session", style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
-            const SizedBox(height: 20),
-            _buildInputLabel("Student Name"),
-            TextField(decoration: _inputStyle("Select student...")),
-            const SizedBox(height: 20),
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [_buildInputLabel("Time"), TextField(decoration: _inputStyle("09:00 AM"))])),
-                const SizedBox(width: 15),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [_buildInputLabel("Duration"), TextField(decoration: _inputStyle("45 mins"))])),
+                Text(
+                  "${_monthName(_selectedDate.month)} ${_selectedDate.year}",
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w900, fontSize: 18),
+                ),
+                GestureDetector(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _selectedDate,
+                      firstDate: DateTime(2025),
+                      lastDate: DateTime(2027),
+                    );
+                    if (picked != null) {
+                      setState(() => _selectedDate = picked);
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                        color: AppTheme.mentor.withValues(alpha: 0.1),
+                        shape: BoxShape.circle),
+                    child: const Icon(Icons.calendar_month_rounded,
+                        color: AppTheme.mentor, size: 20),
+                  ),
+                ),
               ],
             ),
-            const SizedBox(height: 30),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.mentor,
-                minimumSize: const Size(double.infinity, 56),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-              ),
-              child: const Text("Confirm Schedule", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: List.generate(7, (i) {
+                final day = _selectedDate
+                    .subtract(Duration(days: _selectedDate.weekday - 1))
+                    .add(Duration(days: i));
+                final isToday = day.day == DateTime.now().day &&
+                    day.month == DateTime.now().month;
+                final isSelected = day.day == _selectedDate.day &&
+                    day.month == _selectedDate.month;
+
+                return Column(
+                  children: [
+                    Text(
+                      _dayNames[i + 1],
+                      style: const TextStyle(
+                          color: Colors.grey,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? AppTheme.mentor
+                            : (isToday
+                            ? AppTheme.mentor.withValues(alpha: 0.12)
+                            : Colors.transparent),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: Text(
+                          "${day.day}",
+                          style: TextStyle(
+                            color: isSelected
+                                ? Colors.white
+                                : (isToday
+                                ? AppTheme.mentor
+                                : Colors.black87),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              }),
             ),
           ],
         ),
@@ -5008,61 +6792,187 @@ class _MentorScheduleScreenState extends State<MentorScheduleScreen> {
     );
   }
 
-  // --- HELPERS ---
-  Widget _buildInputLabel(String label) => Padding(padding: const EdgeInsets.only(bottom: 8, left: 4), child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)));
+  Widget _buildRequestsTab() {
+    if (_isLoadingRequests) {
+      return const Center(
+          child: CircularProgressIndicator(color: AppTheme.mentor));
+    }
+    if (_pendingRequests.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: _fetchPendingRequests,
+        child: ListView(
+          padding: const EdgeInsets.all(24),
+          children: [
+            const SizedBox(height: 60),
+            Center(
+              child: Column(
+                children: [
+                  Icon(Icons.inbox_rounded, size: 72, color: Colors.grey.shade300),
+                  const SizedBox(height: 16),
+                  const Text("No pending session requests",
+                      style: TextStyle(color: Colors.grey, fontSize: 15)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
-  InputDecoration _inputStyle(String hint) => InputDecoration(
-    hintText: hint,
-    filled: true, fillColor: const Color(0xFFF8F9FB),
-    border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
-    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-  );
+    return RefreshIndicator(
+      onRefresh: _fetchPendingRequests,
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
+        itemCount: _pendingRequests.length,
+        itemBuilder: (context, i) => _buildRequestCard(_pendingRequests[i]),
+      ),
+    );
+  }
 
-  Widget _buildTimelineItem({required String time, required String student, required String topic, bool isLive = false, bool isCompleted = false, bool isLocked = false}) {
-    return IntrinsicHeight(
+  Widget _buildRequestCard(Map<String, dynamic> req) {
+    final String studentName = req['student_name'] ?? "Student";
+    final String timeSlot    = req['time_slot'] ?? "—";
+    final String reqId       = req['request_id']?.toString() ?? '';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border:
+        Border.all(color: AppTheme.mentor.withValues(alpha: 0.12)),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withValues(alpha: 0.03),
+              blurRadius: 12,
+              offset: const Offset(0, 4))
+        ],
+      ),
       child: Row(
         children: [
-          SizedBox(
-            width: 60,
+          CircleAvatar(
+            radius: 26,
+            backgroundImage: NetworkImage(
+                'https://i.pravatar.cc/150?u=${req['student_id']}'),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(time.split(" ")[0], style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14)),
-                Text(time.split(" ")[1], style: const TextStyle(color: Colors.grey, fontSize: 10, fontWeight: FontWeight.bold)),
-                Expanded(child: Container(width: 2, color: Colors.grey.withOpacity(0.2))),
+                Text(studentName,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800, fontSize: 15)),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const Icon(Icons.schedule_rounded,
+                        size: 13, color: Colors.grey),
+                    const SizedBox(width: 4),
+                    Text(timeSlot,
+                        style: const TextStyle(
+                            color: Colors.grey,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600)),
+                  ],
+                ),
               ],
             ),
           ),
-          const SizedBox(width: 10),
-          Expanded(
+          GestureDetector(
+            onTap: reqId.isEmpty ? null : () => _handleApprove(req),
             child: Container(
-              margin: const EdgeInsets.only(bottom: 20),
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: isLive ? AppTheme.mentor : Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: isLive ? [BoxShadow(color: AppTheme.mentor.withOpacity(0.2), blurRadius: 20, offset: const Offset(0, 10))] : [],
-                border: isCompleted ? Border.all(color: Colors.green.shade100) : null,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(student, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: isLive ? Colors.white : Colors.black)),
-                      if (isCompleted) const Icon(Icons.check_circle, color: Colors.green, size: 20),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(topic, style: TextStyle(color: isLive ? Colors.white70 : Colors.blueGrey, fontSize: 13)),
-                ],
-              ),
+                  color: Colors.green.shade50,
+                  shape: BoxShape.circle),
+              child:
+              const Icon(Icons.check_rounded, color: Colors.green, size: 22),
+            ),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: () => setState(() => _pendingRequests
+                .removeWhere((r) => r['request_id'] == req['request_id'])),
+            child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                  color: Colors.red.shade50, shape: BoxShape.circle),
+              child: const Icon(Icons.close_rounded,
+                  color: Colors.redAccent, size: 22),
             ),
           ),
         ],
       ),
     );
   }
+
+  Widget _buildUpcomingTab() {
+    if (_isLoadingSessions) {
+      return const Center(
+          child: CircularProgressIndicator(color: AppTheme.mentor));
+    }
+    if (_upcomingSessions.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: _fetchSessions,
+        child: ListView(
+          padding: const EdgeInsets.all(24),
+          children: [
+            const SizedBox(height: 60),
+            Center(
+              child: Column(
+                children: [
+                  Icon(Icons.event_available_rounded,
+                      size: 72, color: Colors.grey.shade300),
+                  const SizedBox(height: 16),
+                  const Text("No upcoming sessions",
+                      style: TextStyle(color: Colors.grey, fontSize: 15)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _fetchSessions,
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
+        itemCount: _upcomingSessions.length,
+        itemBuilder: (context, i) =>
+            _buildSessionCard(_upcomingSessions[i]),
+      ),
+    );
+  }
+
+  Widget _buildSessionCard(Map<String, dynamic> session) {
+    final bool isLive = session['is_live'] == true;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(color: isLive ? AppTheme.mentor : Colors.white, borderRadius: BorderRadius.circular(24)),
+      child: ListTile(
+        title: Text(session['other_party_name'] ?? 'Student', style: TextStyle(color: isLive ? Colors.white : Colors.black, fontWeight: FontWeight.bold)),
+        subtitle: Text(session['scheduled_at'].toString(), style: TextStyle(color: isLive ? Colors.white70 : Colors.grey)),
+        trailing: isLive ? const Icon(Icons.videocam_rounded, color: Colors.white) : null,
+        onTap: isLive ? () => _joinSession(session) : null,
+      ),
+    );
+  }
+
+  Widget _buildInputLabel(String label) => Text(label, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey, fontSize: 13));
+  Widget _buildTimeBox(TimeOfDay t) => Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14), decoration: BoxDecoration(color: const Color(0xFFF8F9FB), borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.grey.shade200)), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(t.format(context), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)), const Icon(Icons.access_time_rounded, color: AppTheme.mentor, size: 18)]));
+  String _monthName(int m) => ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m];
+}
+
+class _TabBarDelegate extends SliverPersistentHeaderDelegate {
+  final TabBar tabBar;
+  const _TabBarDelegate(this.tabBar);
+  @override double get minExtent => tabBar.preferredSize.height;
+  @override double get maxExtent => tabBar.preferredSize.height;
+  @override Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) => Container(color: Colors.white, child: tabBar);
+  @override bool shouldRebuild(_TabBarDelegate old) => tabBar != old.tabBar;
 }
 
 ================================================================================
@@ -5882,6 +7792,561 @@ class _SplashScreenState extends State<SplashScreen> {
 }
 
 ================================================================================
+FILE: screens\student_schedule_screen.dart
+================================================================================
+
+import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
+import '../services/mentor_service.dart';
+import 'video_call_screen.dart'; // ✅ Added import for the VC screen
+
+class StudentScheduleScreen extends StatefulWidget {
+  const StudentScheduleScreen({super.key});
+
+  @override
+  State<StudentScheduleScreen> createState() => _StudentScheduleScreenState();
+}
+
+class _StudentScheduleScreenState extends State<StudentScheduleScreen> {
+  final MentorService _service = MentorService();
+
+  List<dynamic> _mySessions = [];
+  bool _isLoading = true;
+  String? _joiningSessionId;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchMySessions();
+  }
+
+  Future<void> _fetchMySessions() async {
+    setState(() => _isLoading = true);
+    final data = await _service.getUpcomingSessions();
+    if (mounted) {
+      setState(() {
+        _mySessions = data;
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _joinSession(Map<String, dynamic> session) async {
+    final String sessionId = session['session_id']?.toString() ?? '';
+    if (sessionId.isEmpty) return;
+
+    setState(() => _joiningSessionId = sessionId);
+    final result = await _service.joinVideoSession(sessionId);
+    if (mounted) setState(() => _joiningSessionId = null);
+
+    if (result != null && mounted) {
+      final String dyteToken = result['token'] ?? '';
+
+      // ✅ AWAIT the video call screen. The code pauses here while they chat.
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => VideoCallScreen(token: dyteToken),
+        ),
+      );
+
+      // ✅ Once they tap 'Leave Call' and the screen closes, hit the backend!
+      await _service.endVideoSession(sessionId);
+
+      // ✅ Automatically refresh the UI to show the session is complete
+      _fetchMySessions();
+
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Could not join session. Please try again."),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FBFF),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0.5,
+        centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black, size: 20),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text("My Schedule",
+            style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900)),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded, color: AppTheme.student),
+            onPressed: _fetchMySessions,
+          ),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: _fetchMySessions,
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator(color: AppTheme.student))
+            : _mySessions.isEmpty
+            ? _buildEmptyState()
+            : ListView.builder(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(20),
+          itemCount: _mySessions.length,
+          itemBuilder: (context, index) => _buildSessionCard(_mySessions[index]),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        const SizedBox(height: 100),
+        Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.event_busy_rounded, size: 80, color: Colors.grey.shade300),
+              const SizedBox(height: 16),
+              const Text(
+                "No upcoming sessions",
+                style: TextStyle(color: Colors.grey, fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                "Book a slot with a mentor to see it here.",
+                style: TextStyle(color: Colors.grey, fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSessionCard(Map<String, dynamic> session) {
+    final bool isLive = session['is_live'] == true;
+    final int secsUntil = session['seconds_until_start'] ?? 999999;
+    final String name = session['other_party_name'] ?? 'Mentor';
+    final String sessionId = session['session_id']?.toString() ?? '';
+    final bool isJoining = _joiningSessionId == sessionId;
+
+    DateTime? scheduledAt;
+    try {
+      scheduledAt = DateTime.parse(session['scheduled_at'].toString());
+    } catch (_) {}
+
+    final String timeLabel = scheduledAt != null
+        ? "${scheduledAt.day}/${scheduledAt.month} at "
+        "${scheduledAt.hour.toString().padLeft(2, '0')}:"
+        "${scheduledAt.minute.toString().padLeft(2, '0')}"
+        : "—";
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: isLive ? AppTheme.student.withValues(alpha: 0.2) : Colors.black.withValues(alpha: 0.03),
+            blurRadius: isLive ? 15 : 10,
+            offset: const Offset(0, 5),
+          )
+        ],
+        border: Border.all(color: isLive ? AppTheme.student : Colors.transparent, width: 1.5),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: isLive ? AppTheme.student : AppTheme.student.withValues(alpha: 0.1),
+                  child: Icon(Icons.video_camera_front_rounded, color: isLive ? Colors.white : AppTheme.student),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(name, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                      const SizedBox(height: 4),
+                      Text(timeLabel, style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 13)),
+                    ],
+                  ),
+                ),
+                if (isLive)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.redAccent.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.circle, color: Colors.redAccent, size: 8),
+                        SizedBox(width: 4),
+                        Text("LIVE", style: TextStyle(color: Colors.redAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: (isLive || secsUntil <= 300) ? AppTheme.student : Colors.grey.shade100,
+                  foregroundColor: (isLive || secsUntil <= 300) ? Colors.white : Colors.grey.shade500,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+                icon: isJoining
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : const Icon(Icons.videocam_rounded, size: 20),
+                label: Text(
+                  isJoining ? "Connecting..." : ((isLive || secsUntil <= 300) ? "Join Video Call" : "Starts soon"),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                onPressed: (isJoining || !(isLive || secsUntil <= 300)) ? null : () => _joinSession(session),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+================================================================================
+FILE: screens\student_session_screen.dart
+================================================================================
+
+import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
+import '../services/mentor_service.dart';
+import 'student_schedule_screen.dart'; // ✅ Added import for the global schedule screen
+
+/// Navigate here from MentorListScreen when the student taps "Request Session"
+/// on a mentor in the MY MENTORS tab.
+///
+/// Required params:
+///   mentorProfileId — Mentor.id (the mentor TABLE primary key, a UUID)
+///   mentorUserId    — User.id of the mentor (used for avatar & chat)
+///   mentorName      — Display name
+
+class StudentSessionScreen extends StatefulWidget {
+  final String mentorProfileId; // ← Mentor TABLE primary key
+  final String mentorUserId;    // ← User TABLE id (for avatar)
+  final String mentorName;
+
+  const StudentSessionScreen({
+    super.key,
+    required this.mentorProfileId,
+    required this.mentorUserId,
+    required this.mentorName,
+  });
+
+  @override
+  State<StudentSessionScreen> createState() => _StudentSessionScreenState();
+}
+
+class _StudentSessionScreenState extends State<StudentSessionScreen> {
+  final MentorService _service = MentorService();
+
+  List<dynamic> _slots          = [];
+  bool          _isLoadingSlots = true;
+
+  String? _requestingSlotId;
+
+  @override
+  void initState() {
+    super.initState();
+    debugPrint(
+        "🚀 StudentSessionScreen: mentorProfileId=${widget.mentorProfileId}, "
+            "mentorUserId=${widget.mentorUserId}");
+    _loadAll();
+  }
+
+  Future<void> _loadAll() async {
+    await _fetchSlots();
+  }
+
+  // ── Fetch available slots for THIS mentor ──────────────────────────────────
+
+  Future<void> _fetchSlots() async {
+    if (!mounted) return;
+    setState(() => _isLoadingSlots = true);
+
+    // ✅ Pass mentor PROFILE id (Mentor.id), NOT user_id
+    final data = await _service.getMentorAvailability(widget.mentorProfileId);
+
+    if (mounted) {
+      setState(() {
+        _slots          = data;
+        _isLoadingSlots = false;
+      });
+    }
+  }
+
+  // ── Book a slot ────────────────────────────────────────────────────────────
+
+  Future<void> _requestSlot(Map<String, dynamic> slot) async {
+    final String slotId = slot['id']?.toString() ?? '';
+    if (slotId.isEmpty) return;
+
+    setState(() => _requestingSlotId = slotId);
+
+    // ✅ mentorId = Mentor.id (profile UUID), availabilityId = slot UUID
+    final success = await _service.requestSession(
+      mentorId:       widget.mentorProfileId,
+      availabilityId: slotId,
+      message:        "I would like to book this session.",
+    );
+
+    if (mounted) setState(() => _requestingSlotId = null);
+
+    if (success && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content:         Text("✅ Request sent! Waiting for mentor approval."),
+          backgroundColor: Colors.green,
+        ),
+      );
+      _fetchSlots(); // slot disappears (now in pending state)
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              "Could not send request. Slot may be taken or already requested."),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    }
+  }
+
+  // ── Build ──────────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FBFF),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0.5,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded,
+              color: Colors.black, size: 20),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Row(
+          children: [
+            CircleAvatar(
+              radius: 18,
+              backgroundImage: NetworkImage(
+                  'https://i.pravatar.cc/150?u=${widget.mentorUserId}'),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(widget.mentorName,
+                      style: const TextStyle(
+                          color:       Colors.black,
+                          fontWeight:  FontWeight.bold,
+                          fontSize:    16)),
+                  const Text("Book a session",
+                      style: TextStyle(color: Colors.grey, fontSize: 11)),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          // ✅ NEW: Button to view the student's global schedule
+          IconButton(
+            icon: const Icon(Icons.calendar_month_rounded, color: AppTheme.student),
+            tooltip: "My Schedule",
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const StudentScheduleScreen(),
+                ),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded, color: AppTheme.student),
+            onPressed: _loadAll,
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: _loadAll,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildSectionHeader(
+                  "Available Time Slots", Icons.calendar_month),
+              const SizedBox(height: 4),
+              const Text(
+                "Tap Book to send a session request to the mentor.",
+                style: TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+              const SizedBox(height: 12),
+              _buildSlotsSection(),
+              const SizedBox(height: 80),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Section header ─────────────────────────────────────────────────────────
+
+  Widget _buildSectionHeader(String title, IconData icon) {
+    return Row(
+      children: [
+        Icon(icon, color: AppTheme.student, size: 20),
+        const SizedBox(width: 8),
+        Text(title,
+            style: const TextStyle(
+                fontSize:   16,
+                fontWeight: FontWeight.bold,
+                color:      Color(0xFF1A2138))),
+      ],
+    );
+  }
+
+  // ── Available slots ────────────────────────────────────────────────────────
+
+  Widget _buildSlotsSection() {
+    if (_isLoadingSlots) {
+      return const Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: CircularProgressIndicator(color: AppTheme.student),
+          ));
+    }
+    if (_slots.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+            color:        Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border:       Border.all(color: Colors.grey.shade100)),
+        child: Column(
+          children: [
+            Icon(Icons.calendar_today_outlined,
+                size: 48, color: Colors.grey.shade300),
+            const SizedBox(height: 12),
+            const Text("No available slots right now.",
+                style: TextStyle(
+                    color:      Colors.grey,
+                    fontSize:   14,
+                    fontWeight: FontWeight.w600)),
+            const SizedBox(height: 4),
+            const Text("Check back later or message your mentor.",
+                style: TextStyle(color: Colors.grey, fontSize: 12)),
+          ],
+        ),
+      );
+    }
+    return Column(
+        children:
+        _slots.map<Widget>((s) => _buildSlotCard(s)).toList());
+  }
+
+  Widget _buildSlotCard(Map<String, dynamic> slot) {
+    const List<String> days = [
+      '', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'
+    ];
+    final int    dayIdx      = (slot['day_of_week'] as int?)?.clamp(1, 7) ?? 1;
+    final String rawStart    = slot['start_time']?.toString() ?? '00:00:00';
+    final String rawEnd      = slot['end_time']?.toString() ?? '00:00:00';
+    final String start       = rawStart.length >= 5 ? rawStart.substring(0, 5) : rawStart;
+    final String end         = rawEnd.length   >= 5 ? rawEnd.substring(0, 5)   : rawEnd;
+    final String slotId      = slot['id']?.toString() ?? '';
+    final bool   isProcessing = _requestingSlotId == slotId;
+
+    return Card(
+      margin:     const EdgeInsets.only(bottom: 12),
+      elevation:  0,
+      color:      Colors.white,
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(15),
+          side: BorderSide(
+              color: AppTheme.student.withValues(alpha: 0.15))),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: AppTheme.student.withValues(alpha: 0.1),
+          child: Text(days[dayIdx],
+              style: const TextStyle(
+                  color:      AppTheme.student,
+                  fontSize:   11,
+                  fontWeight: FontWeight.bold)),
+        ),
+        title: Text("$start – $end",
+            style: const TextStyle(
+                fontWeight: FontWeight.bold, fontSize: 15)),
+        subtitle: Text(_fullDayName(dayIdx),
+            style: const TextStyle(color: Colors.grey, fontSize: 12)),
+        trailing: ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: isProcessing
+                ? Colors.grey.shade300
+                : AppTheme.student,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10)),
+            padding: const EdgeInsets.symmetric(
+                horizontal: 16, vertical: 10),
+            elevation: 0,
+          ),
+          onPressed: isProcessing || slotId.isEmpty
+              ? null
+              : () => _requestSlot(slot),
+          child: isProcessing
+              ? const SizedBox(
+              width:  15,
+              height: 15,
+              child:  CircularProgressIndicator(
+                  color: Colors.white, strokeWidth: 2))
+              : const Text("Book",
+              style: TextStyle(fontWeight: FontWeight.bold)),
+        ),
+      ),
+    );
+  }
+
+  String _fullDayName(int dayIdx) {
+    const names = [
+      '', 'Monday', 'Tuesday', 'Wednesday',
+      'Thursday', 'Friday', 'Saturday', 'Sunday'
+    ];
+    return (dayIdx >= 1 && dayIdx <= 7) ? names[dayIdx] : '';
+  }
+}
+
+================================================================================
 FILE: screens\student_setting_screen.dart
 ================================================================================
 
@@ -6592,6 +9057,44 @@ class _StudentTestScreenState extends State<StudentTestScreen> {
 }
 
 ================================================================================
+FILE: screens\video_call_screen.dart
+================================================================================
+
+import 'package:flutter/material.dart';
+import 'package:dyte_uikit/dyte_uikit.dart';
+
+class VideoCallScreen extends StatelessWidget {
+  final String token;
+
+  const VideoCallScreen({
+    super.key,
+    required this.token,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // 1. Create the meeting info with your backend token
+    final meetingInfo = DyteMeetingInfoV2(authToken: token);
+
+    // 2. Initialize the UI Kit Info
+    final uiKitInfo = DyteUIKitInfo(meetingInfo);
+
+    // 3. Build the actual Video Call Widget
+    final dyteWidget = DyteUIKitBuilder.build(
+      uiKitInfo: uiKitInfo,
+    );
+
+    return Scaffold(
+      backgroundColor: Colors.black, // Sleek black background
+      body: SafeArea(
+        // This widget automatically handles the camera, mic, grid, and End Call button
+        child: dyteWidget,
+      ),
+    );
+  }
+}
+
+================================================================================
 FILE: services\assessment_service.dart
 ================================================================================
 
@@ -6602,7 +9105,8 @@ import 'package:flutter/foundation.dart';
 import 'token_service.dart';
 
 class AssessmentService {
-  String get baseUrl => (dotenv.env['API_BASE_URL'] ?? "").replaceAll(RegExp(r'/$'), '');
+  String get baseUrl =>
+      (dotenv.env['API_BASE_URL'] ?? "").replaceAll(RegExp(r'/$'), '');
 
   static const Map<String, String> moduleMapping = {
     "Basic Assessment": "profile",
@@ -6627,12 +9131,15 @@ class AssessmentService {
   static String mapClassToGradeBand(String? currentClass) {
     if (currentClass == null || currentClass.isEmpty) return "6-8";
     final classLower = currentClass.toLowerCase().trim();
-    if (classLower.contains("6") || classLower.contains("7") || classLower.contains("8")) return "6-8";
-    if (classLower.contains("9") || classLower.contains("10") || classLower.contains("11")) return "9-11";
+    if (classLower.contains("6") || classLower.contains("7") ||
+        classLower.contains("8")) return "6-8";
+    if (classLower.contains("9") || classLower.contains("10") ||
+        classLower.contains("11")) return "9-11";
     return "9-11";
   }
 
-  // --- FETCH USER PROFILE & PROGRESS ---
+  // ── USER PROFILE ─────────────────────────────────────────────────────────
+
   Future<Map<String, dynamic>> getUserProfile() async {
     final url = "$baseUrl/api/v1/auth/users/me/";
     try {
@@ -6657,27 +9164,58 @@ class AssessmentService {
     }
   }
 
-  // --- AI RECOMMENDATIONS ---
+  // ── AUTH TOKEN ────────────────────────────────────────────────────────────
+
+  Future<String> getAuthToken() async {
+    final token = await TokenService.getToken();
+    if (token == null || token.isEmpty) {
+      throw Exception("No auth token found. Please log in again.");
+    }
+    return token;
+  }
+
+  // ── CHAT MESSAGES ─────────────────────────────────────────────────────────
+
+  Future<List<dynamic>> getChatMessages(String otherUserId) async {
+    final url = Uri.parse("$baseUrl/api/v1/chat/messages/$otherUserId");
+    try {
+      final response = await http
+          .get(url, headers: await _getHeaders())
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) return json.decode(response.body);
+      debugPrint(
+          "getChatMessages error ${response.statusCode}: ${response.body}");
+      return [];
+    } catch (e) {
+      debugPrint("❌ getChatMessages exception: $e");
+      return [];
+    }
+  }
+
+  // ── AI RECOMMENDATIONS ────────────────────────────────────────────────────
+
   Future<Map<String, dynamic>> getAIRecommendations() async {
     final url = "$baseUrl/api/v1/ai/recommend";
     try {
-      final response = await http.post(
-        Uri.parse(url),
-        headers: await _getHeaders(),
-      ).timeout(const Duration(seconds: 45));
+      final response = await http
+          .post(Uri.parse(url), headers: await _getHeaders())
+          .timeout(const Duration(seconds: 45));
 
       if (response.statusCode == 200) {
         return json.decode(response.body);
       } else {
         final error = json.decode(response.body);
-        throw Exception(error['detail'] ?? "AI Recommendation failed: ${response.statusCode}");
+        throw Exception(
+            error['detail'] ?? "AI Recommendation failed: ${response.statusCode}");
       }
     } catch (e) {
       throw Exception("AI Engine Error: $e");
     }
   }
 
-  // --- SELECT CAREER ---
+  // ── SELECT CAREER ─────────────────────────────────────────────────────────
+
   Future<bool> selectCareer(String careerTitle) async {
     final url = "$baseUrl/api/v1/ai/select-career";
     try {
@@ -6693,8 +9231,10 @@ class AssessmentService {
     }
   }
 
-  // --- FETCH QUESTIONS ---
-  Future<Map<String, dynamic>> fetchQuestions(String uiTitle, {String? grade, String? currentClass}) async {
+  // ── FETCH QUESTIONS ───────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> fetchQuestions(String uiTitle,
+      {String? grade, String? currentClass}) async {
     final moduleName = moduleMapping[uiTitle] ?? uiTitle.toLowerCase();
     String url = "$baseUrl/api/v1/assessments/questions/$moduleName";
 
@@ -6704,20 +9244,25 @@ class AssessmentService {
     }
 
     try {
-      final response = await http.get(
-        Uri.parse(url),
-        headers: await _getHeaders(),
-      ).timeout(const Duration(seconds: 15));
+      final response = await http
+          .get(Uri.parse(url), headers: await _getHeaders())
+          .timeout(const Duration(seconds: 15));
 
-      if (response.statusCode == 200) return json.decode(response.body);
-      else throw Exception(json.decode(response.body)['detail'] ?? "Fetch failed");
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        throw Exception(
+            json.decode(response.body)['detail'] ?? "Fetch failed");
+      }
     } catch (e) {
       throw Exception("Connection error: $e");
     }
   }
 
-  // --- SUBMIT ANSWERS ---
-  Future<bool> submitAnswers(String uiTitle, Map<String, dynamic> answers) async {
+  // ── SUBMIT ANSWERS ────────────────────────────────────────────────────────
+
+  Future<bool> submitAnswers(
+      String uiTitle, Map<String, dynamic> answers) async {
     final moduleKey = moduleMapping[uiTitle] ?? uiTitle.toLowerCase();
     final url = "$baseUrl/api/v1/assessments/submit-generic";
 
@@ -6734,11 +9279,10 @@ class AssessmentService {
     };
 
     try {
-      final response = await http.post(
-          Uri.parse(url),
-          headers: await _getHeaders(),
-          body: json.encode(requestBody)
-      ).timeout(const Duration(seconds: 15));
+      final response = await http
+          .post(Uri.parse(url),
+          headers: await _getHeaders(), body: json.encode(requestBody))
+          .timeout(const Duration(seconds: 15));
 
       return (response.statusCode == 200 || response.statusCode == 201);
     } catch (e) {
@@ -6746,12 +9290,17 @@ class AssessmentService {
     }
   }
 
-  // --- GENERATE AND SAVE ROADMAP ---
-  Future<Map<String, dynamic>> generateAndSaveRoadmap(String careerTitle) async {
+  // ── ROADMAP ───────────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> generateAndSaveRoadmap(
+      String careerTitle) async {
     final headers = await _getHeaders();
     try {
-      final genUrl = Uri.parse('$baseUrl/api/v1/roadmaps/generate?career=${Uri.encodeComponent(careerTitle)}');
-      final genRes = await http.get(genUrl, headers: headers).timeout(const Duration(seconds: 60));
+      final genUrl = Uri.parse(
+          '$baseUrl/api/v1/roadmaps/generate?career=${Uri.encodeComponent(careerTitle)}');
+      final genRes = await http
+          .get(genUrl, headers: headers)
+          .timeout(const Duration(seconds: 60));
 
       if (genRes.statusCode != 200) {
         throw Exception("Failed to generate roadmap: ${genRes.body}");
@@ -6759,14 +9308,18 @@ class AssessmentService {
       final roadmapData = json.decode(genRes.body);
 
       final saveUrl = Uri.parse('$baseUrl/api/v1/roadmaps/save');
-      final saveRes = await http.post(saveUrl, headers: headers, body: json.encode(roadmapData)).timeout(const Duration(seconds: 15));
+      final saveRes = await http
+          .post(saveUrl, headers: headers, body: json.encode(roadmapData))
+          .timeout(const Duration(seconds: 15));
 
       if (saveRes.statusCode != 201) {
         throw Exception("Failed to save roadmap: ${saveRes.body}");
       }
 
       final startUrl = Uri.parse('$baseUrl/api/v1/roadmaps/start');
-      await http.post(startUrl, headers: headers).timeout(const Duration(seconds: 10));
+      await http
+          .post(startUrl, headers: headers)
+          .timeout(const Duration(seconds: 10));
 
       return roadmapData;
     } catch (e) {
@@ -6775,11 +9328,12 @@ class AssessmentService {
     }
   }
 
-  // --- GET CURRENT ROADMAP ---
   Future<Map<String, dynamic>?> getCurrentRoadmap() async {
     final url = "$baseUrl/api/v1/roadmaps/current";
     try {
-      final response = await http.get(Uri.parse(url), headers: await _getHeaders()).timeout(const Duration(seconds: 15));
+      final response = await http
+          .get(Uri.parse(url), headers: await _getHeaders())
+          .timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) return json.decode(response.body);
       if (response.statusCode == 404) return null;
       throw Exception("Failed to load roadmap");
@@ -6788,11 +9342,12 @@ class AssessmentService {
     }
   }
 
-  // --- TOGGLE TASK COMPLETION ---
   Future<Map<String, dynamic>> toggleTaskCompletion(String taskId) async {
     final url = "$baseUrl/api/v1/roadmaps/tasks/$taskId/complete";
     try {
-      final response = await http.patch(Uri.parse(url), headers: await _getHeaders()).timeout(const Duration(seconds: 15));
+      final response = await http
+          .patch(Uri.parse(url), headers: await _getHeaders())
+          .timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) return json.decode(response.body);
       throw Exception("Failed to update task");
     } catch (e) {
@@ -6800,12 +9355,16 @@ class AssessmentService {
     }
   }
 
-  // --- PARENT/STUDENT LINKING ---
+  // ── PARENT / STUDENT LINKING ──────────────────────────────────────────────
+
   Future<String?> getStudentInviteCode() async {
     final url = "$baseUrl/api/v1/students/invite-code";
     try {
-      final response = await http.get(Uri.parse(url), headers: await _getHeaders());
-      if (response.statusCode == 200) return json.decode(response.body)['invite_code'];
+      final response =
+      await http.get(Uri.parse(url), headers: await _getHeaders());
+      if (response.statusCode == 200) {
+        return json.decode(response.body)['invite_code'];
+      }
       return null;
     } catch (e) {
       return null;
@@ -6815,10 +9374,13 @@ class AssessmentService {
   Future<Map<String, dynamic>> linkStudentToParent(String code) async {
     final url = "$baseUrl/api/v1/parents/link-student";
     try {
-      final response = await http.post(Uri.parse(url), headers: await _getHeaders(), body: json.encode({"invite_code": code}));
+      final response = await http.post(Uri.parse(url),
+          headers: await _getHeaders(),
+          body: json.encode({"invite_code": code}));
       return {
         "success": response.statusCode == 201 || response.statusCode == 200,
-        "message": json.decode(response.body)['detail'] ?? json.decode(response.body)['message'],
+        "message": json.decode(response.body)['detail'] ??
+            json.decode(response.body)['message'],
       };
     } catch (e) {
       return {"success": false, "message": "Connection error: $e"};
@@ -6828,8 +9390,12 @@ class AssessmentService {
   Future<Map<String, dynamic>> getLinkedStudentStatus() async {
     final url = "$baseUrl/api/v1/parents/linked-student";
     try {
-      final response = await http.get(Uri.parse(url), headers: await _getHeaders()).timeout(const Duration(seconds: 15));
-      return response.statusCode == 200 ? json.decode(response.body) : {"is_linked": false, "student": null};
+      final response = await http
+          .get(Uri.parse(url), headers: await _getHeaders())
+          .timeout(const Duration(seconds: 15));
+      return response.statusCode == 200
+          ? json.decode(response.body)
+          : {"is_linked": false, "student": null};
     } catch (e) {
       return {"is_linked": false, "error": e.toString()};
     }
@@ -6838,7 +9404,10 @@ class AssessmentService {
   Future<Map<String, dynamic>> getProfileById(String userId) async {
     final url = "$baseUrl/api/v1/auth/users/me?user_id=$userId";
     final token = await TokenService.getToken();
-    final response = await http.get(Uri.parse(url), headers: {"Content-Type": "application/json", if (token != null) "Authorization": "Bearer $token"});
+    final response = await http.get(Uri.parse(url), headers: {
+      "Content-Type": "application/json",
+      if (token != null) "Authorization": "Bearer $token"
+    });
     if (response.statusCode == 200) return json.decode(response.body);
     throw Exception("Failed to load profile");
   }
@@ -6847,7 +9416,10 @@ class AssessmentService {
     final url = "$baseUrl/api/v1/parent/roadmaps/$studentId";
     final token = await TokenService.getToken();
     try {
-      final response = await http.get(Uri.parse(url), headers: {"Content-Type": "application/json", if (token != null) "Authorization": "Bearer $token"});
+      final response = await http.get(Uri.parse(url), headers: {
+        "Content-Type": "application/json",
+        if (token != null) "Authorization": "Bearer $token"
+      });
       if (response.statusCode == 200) return json.decode(response.body);
       return null;
     } catch (e) {
@@ -6855,19 +9427,92 @@ class AssessmentService {
     }
   }
 
-  // --- MENTORSHIP ---
-  Future<List<dynamic>> searchMentors({String careerGoal = "technology"}) async {
-    final token = await TokenService.getToken();
-    final url = Uri.parse('$baseUrl/api/v1/mentorship/search/?career_goal=${Uri.encodeComponent(careerGoal)}');
-    final response = await http.get(url, headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'});
-    return response.statusCode == 200 ? json.decode(response.body) : throw Exception('Failed to fetch mentors');
+  // ── MENTORSHIP ────────────────────────────────────────────────────────────
+
+  /// GET /api/v1/mentorship/search/
+  /// Returns list of { id (mentor profile UUID), user_id, full_name, expertise, ... }
+  Future<List<dynamic>> searchMentors(
+      {String careerGoal = "technology"}) async {
+    final url = Uri.parse(
+        '$baseUrl/api/v1/mentorship/search/?career_goal=${Uri.encodeComponent(careerGoal)}');
+    final response = await http.get(url, headers: await _getHeaders());
+    return response.statusCode == 200
+        ? json.decode(response.body)
+        : throw Exception('Failed to fetch mentors');
   }
 
-  // Fetch sent requests/existing connections to persist UI state
-  Future<List<dynamic>> getSentRequests() async {
-    final url = Uri.parse('$baseUrl/api/v1/chat/connections');
+  /// GET /api/v1/chat/connections
+  /// Returns list of { user_id, full_name, role, request_type }
+  /// NOTE: does NOT include the mentor's profile UUID (mentor.id).
+  Future<List<dynamic>> getAcceptedConnections() async {
+    final url = Uri.parse("$baseUrl/api/v1/chat/connections");
     try {
-      final response = await http.get(url, headers: await _getHeaders());
+      final response = await http
+          .get(url, headers: await _getHeaders())
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      return [];
+    } catch (e) {
+      debugPrint("❌ Error fetching accepted mentors: $e");
+      return [];
+    }
+  }
+
+  /// GET /api/v1/mentorship/mentors/{mentor_profile_id}
+  /// Given a mentor's PROFILE UUID (Mentor.id), return full mentor data.
+  Future<Map<String, dynamic>?> getMentorById(String mentorProfileId) async {
+    if (mentorProfileId.isEmpty) return null;
+    final url =
+    Uri.parse('$baseUrl/api/v1/mentorship/mentors/$mentorProfileId');
+    try {
+      final response = await http
+          .get(url, headers: await _getHeaders())
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) return json.decode(response.body);
+      return null;
+    } catch (e) {
+      debugPrint("❌ getMentorById Error: $e");
+      return null;
+    }
+  }
+
+  /// Looks up the mentor PROFILE UUID (Mentor.id) for a given user_id.
+  ///
+  /// Strategy: search mentors broadly and find the one whose user_id matches.
+  /// This is needed because /api/v1/chat/connections only returns user_id,
+  /// but /api/v1/availability/{mentor_id} needs the mentor profile UUID.
+  Future<String?> getMentorProfileIdByUserId(String userId) async {
+    if (userId.isEmpty) return null;
+    try {
+      // Search with a broad term to get all mentors, then filter by user_id
+      final mentors = await searchMentors(careerGoal: "mentor");
+      for (final m in mentors) {
+        if (m['user_id']?.toString() == userId) {
+          return m['id']?.toString();
+        }
+      }
+      // If not found with "mentor", try "technology" as fallback
+      final mentors2 = await searchMentors(careerGoal: "technology");
+      for (final m in mentors2) {
+        if (m['user_id']?.toString() == userId) {
+          return m['id']?.toString();
+        }
+      }
+      return null;
+    } catch (e) {
+      debugPrint("❌ getMentorProfileIdByUserId Error: $e");
+      return null;
+    }
+  }
+
+  Future<List<dynamic>> getSentRequests() async {
+    final url = Uri.parse('$baseUrl/api/v1/mentorship/requests/pending');
+    try {
+      final response =
+      await http.get(url, headers: await _getHeaders());
       return response.statusCode == 200 ? json.decode(response.body) : [];
     } catch (e) {
       debugPrint("❌ Error fetching sent requests: $e");
@@ -6876,21 +9521,18 @@ class AssessmentService {
   }
 
   Future<bool> requestMentorship(String mentorId) async {
-    final token = await TokenService.getToken();
     final url = Uri.parse('$baseUrl/api/v1/connections/request');
-
     try {
-      final response = await http.post(
+      final response = await http
+          .post(
         url,
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
+        headers: await _getHeaders(),
         body: json.encode({
           "mentor_id": mentorId,
           "message": "I would like to request mentorship from you."
         }),
-      ).timeout(const Duration(seconds: 15));
+      )
+          .timeout(const Duration(seconds: 15));
 
       return response.statusCode == 201;
     } catch (e) {
@@ -7105,11 +9747,13 @@ FILE: services\chat_service.dart
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
-import 'token_service.dart'; // Ensure this exists for auth
+import 'token_service.dart';
 
 class ChatService {
-  final String baseUrl = "http://127.0.0.1:8000"; // Update with your actual URL
+  // Use http://10.0.2.2:8000 for Android Emulator
+  final String baseUrl = "http://10.0.2.2:8000";
 
+  // Helper to get consistent headers with Auth token
   Future<Map<String, String>> _getHeaders() async {
     final token = await TokenService.getToken();
     return {
@@ -7118,30 +9762,89 @@ class ChatService {
     };
   }
 
-  // Fetch pending connection requests for the mentor [cite: 111, 112]
+  // ✅ Required for WebSocket handshake
+  Future<String?> getAuthToken() async {
+    return await TokenService.getToken();
+  }
+
+  // ✅ Fetch last 24-hour message history for a specific student [cite: 49]
+  Future<List<dynamic>> getChatMessages(String otherUserId) async {
+    try {
+      final response = await http.get(
+        Uri.parse("$baseUrl/api/v1/chat/messages/$otherUserId"),
+        headers: await _getHeaders(),
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      return [];
+    } catch (e) {
+      debugPrint("❌ ChatService History Error: $e");
+      return [];
+    }
+  }
+
+  // ✅ Fetch active student connections (accepted/approved) [cite: 41]
+  Future<List<dynamic>> getChatConnections() async {
+    try {
+      final response = await http.get(
+        Uri.parse("$baseUrl/api/v1/chat/connections"),
+        headers: await _getHeaders(),
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body); // Returns list of {user_id, full_name, role, request_type}
+      }
+      return [];
+    } catch (e) {
+      debugPrint("❌ ChatService Connections Error: $e");
+      return [];
+    }
+  }
+
+  // ✅ Fetch pending mentorship requests for the mentor dashboard [cite: 94, 111]
   Future<List<dynamic>> getPendingRequests() async {
     try {
       final response = await http.get(
         Uri.parse("$baseUrl/api/v1/mentors/requests/pending"),
         headers: await _getHeaders(),
-      );
-      if (response.statusCode == 200) return json.decode(response.body);
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
       return [];
     } catch (e) {
-      debugPrint("Error fetching requests: $e");
+      debugPrint("❌ ChatService Pending Requests Error: $e");
       return [];
     }
   }
 
-  // Accept a student request [cite: 117, 118]
+  // ✅ Accept a connection request [cite: 117]
   Future<bool> acceptRequest(String requestId) async {
     try {
       final response = await http.patch(
         Uri.parse("$baseUrl/api/v1/connections/$requestId/accept"),
         headers: await _getHeaders(),
       );
-      return response.statusCode == 200;
+      return response.statusCode == 200 || response.statusCode == 204;
     } catch (e) {
+      debugPrint("❌ Accept Error: $e");
+      return false;
+    }
+  }
+
+  // ✅ Reject a connection request [cite: 120]
+  Future<bool> rejectRequest(String requestId) async {
+    try {
+      final response = await http.patch(
+        Uri.parse("$baseUrl/api/v1/connections/$requestId/reject"),
+        headers: await _getHeaders(),
+      );
+      return response.statusCode == 200 || response.statusCode == 204;
+    } catch (e) {
+      debugPrint("❌ Reject Error: $e");
       return false;
     }
   }
@@ -7159,8 +9862,9 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'token_service.dart';
 
 class MentorService {
-  // baseUrl remains root: e.g., "http://10.0.2.2:8000"
-  String get baseUrl => dotenv.env['API_BASE_URL'] ?? "http://10.0.2.2:8000";
+  String get baseUrl =>
+      (dotenv.env['API_BASE_URL'] ?? "http://10.0.2.2:8000")
+          .replaceAll(RegExp(r'/$'), '');
 
   Future<Map<String, String>> _getHeaders() async {
     final token = await TokenService.getToken();
@@ -7170,18 +9874,17 @@ class MentorService {
     };
   }
 
-  /// ✅ Fetch Profile - Appending /api/v1 manually
+  // ── Profile ──────────────────────────────────────────────────────────────
+
   Future<Map<String, dynamic>> getMyProfile() async {
     final url = Uri.parse('$baseUrl/api/v1/profiles/mentors/me');
     try {
-      final response = await http.get(url, headers: await _getHeaders())
+      final response = await http
+          .get(url, headers: await _getHeaders())
           .timeout(const Duration(seconds: 15));
 
-      if (response.statusCode == 200) {
-        return json.decode(response.body);
-      } else {
-        throw Exception("Profile not found or error: ${response.statusCode}");
-      }
+      if (response.statusCode == 200) return json.decode(response.body);
+      throw Exception("Profile not found: ${response.statusCode}");
     } on SocketException {
       throw Exception("Server unreachable. Check your network.");
     } catch (e) {
@@ -7190,20 +9893,219 @@ class MentorService {
     }
   }
 
-  /// ✅ Update Profile - Appending /api/v1 manually
   Future<bool> updateProfile(Map<String, dynamic> profileData) async {
     final url = Uri.parse('$baseUrl/api/v1/profiles/mentors/');
     try {
-      final response = await http.post(
-        url,
-        headers: await _getHeaders(),
-        body: json.encode(profileData),
-      ).timeout(const Duration(seconds: 15));
-
-      debugPrint("📥 API Response: ${response.statusCode} - ${response.body}");
+      final response = await http
+          .post(url,
+          headers: await _getHeaders(), body: json.encode(profileData))
+          .timeout(const Duration(seconds: 15));
       return response.statusCode == 201 || response.statusCode == 200;
     } catch (e) {
       debugPrint("❌ updateProfile Error: $e");
+      return false;
+    }
+  }
+
+  // ── Availability ──────────────────────────────────────────────────────────
+
+  /// POST /api/v1/availability/
+  /// slots: [{ day_of_week: 1-7, start_time: "HH:MM:SS", end_time: "HH:MM:SS" }]
+  Future<bool> setAvailability(List<Map<String, dynamic>> slots) async {
+    final url = Uri.parse('$baseUrl/api/v1/availability/');
+    try {
+      final response = await http
+          .post(url,
+          headers: await _getHeaders(),
+          body: json.encode({"slots": slots}))
+          .timeout(const Duration(seconds: 15));
+
+      debugPrint(
+          "📥 setAvailability ${response.statusCode}: ${response.body}");
+      return response.statusCode == 200 || response.statusCode == 201;
+    } catch (e) {
+      debugPrint("❌ setAvailability Error: $e");
+      return false;
+    }
+  }
+
+  /// GET /api/v1/availability/{mentor_id}
+  ///
+  /// IMPORTANT: mentor_id here is the Mentor TABLE primary key (Mentor.id),
+  /// NOT the user's UUID. Pass "me" to fetch the logged-in mentor's own slots.
+  Future<List<dynamic>> getMentorAvailability(String mentorProfileId) async {
+    try {
+      if (mentorProfileId.isEmpty || mentorProfileId == "null") {
+        debugPrint("⚠️ getMentorAvailability: empty/null id — aborting");
+        return [];
+      }
+
+      String idToQuery = mentorProfileId;
+
+      // Special case: when the mentor views their OWN schedule screen
+      if (mentorProfileId == "me") {
+        final profile = await getMyProfile();
+        idToQuery = profile['id']?.toString() ?? '';
+        if (idToQuery.isEmpty) {
+          debugPrint("❌ getMentorAvailability: could not resolve 'me' profile id");
+          return [];
+        }
+      }
+
+      final url = Uri.parse('$baseUrl/api/v1/availability/$idToQuery');
+      debugPrint("📡 GET $url");
+
+      final response = await http
+          .get(url, headers: await _getHeaders())
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        debugPrint("✅ getMentorAvailability: ${data.length} slots");
+        return data;
+      } else {
+        debugPrint(
+            "❌ getMentorAvailability ${response.statusCode}: ${response.body}");
+        return [];
+      }
+    } catch (e) {
+      debugPrint("❌ getMentorAvailability exception: $e");
+      return [];
+    }
+  }
+
+  // ── Session Requests ──────────────────────────────────────────────────────
+
+  /// GET /api/v1/requests/pending/
+  /// Mentor-only. Returns pending SESSION requests (not connection requests).
+  Future<List<dynamic>> getPendingSessionRequests() async {
+    final url = Uri.parse('$baseUrl/api/v1/requests/pending/');
+    try {
+      final response = await http
+          .get(url, headers: await _getHeaders())
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) return json.decode(response.body);
+      debugPrint(
+          "❌ getPendingSessionRequests ${response.statusCode}: ${response.body}");
+      return [];
+    } catch (e) {
+      debugPrint("❌ getPendingSessionRequests Error: $e");
+      return [];
+    }
+  }
+
+  /// POST /api/v1/requests/create
+  /// mentorId must be the Mentor TABLE primary key (Mentor.id), NOT user_id.
+  /// availabilityId is the MentorAvailability UUID.
+  Future<bool> requestSession({
+    required String mentorId,
+    required String availabilityId,
+    String message = "",
+  }) async {
+    final url = Uri.parse('$baseUrl/api/v1/requests/create');
+    debugPrint(
+        "📡 requestSession mentor_id=$mentorId, slot_id=$availabilityId");
+    try {
+      final response = await http
+          .post(url,
+          headers: await _getHeaders(),
+          body: json.encode({
+            "mentor_id":       mentorId,
+            "availability_id": availabilityId,
+            "message":         message,
+          }))
+          .timeout(const Duration(seconds: 15));
+
+      debugPrint("📥 requestSession ${response.statusCode}: ${response.body}");
+      return response.statusCode == 201 || response.statusCode == 200;
+    } catch (e) {
+      debugPrint("❌ requestSession Error: $e");
+      return false;
+    }
+  }
+
+  /// POST /api/v1/requests/{request_id}/approve
+  /// Mentor approves a session request → creates SessionLog + Dyte meeting.
+  Future<Map<String, dynamic>?> approveSessionRequest(
+      String requestId) async {
+    final url =
+    Uri.parse('$baseUrl/api/v1/requests/$requestId/approve');
+    try {
+      final response = await http
+          .post(url, headers: await _getHeaders())
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return json.decode(response.body);
+      }
+      debugPrint(
+          "❌ approveSessionRequest ${response.statusCode}: ${response.body}");
+      return null;
+    } catch (e) {
+      debugPrint("❌ approveSessionRequest Error: $e");
+      return null;
+    }
+  }
+
+  // ── Sessions ──────────────────────────────────────────────────────────────
+
+  /// GET /api/v1/sessions/upcoming
+  /// Works for both mentor and student (backend auto-detects role).
+  Future<List<dynamic>> getUpcomingSessions() async {
+    final url = Uri.parse('$baseUrl/api/v1/sessions/upcoming');
+    try {
+      final response = await http
+          .get(url, headers: await _getHeaders())
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) return json.decode(response.body);
+      return [];
+    } catch (e) {
+      debugPrint("❌ getUpcomingSessions Error: $e");
+      return [];
+    }
+  }
+
+  /// POST /api/v1/sessions/{session_id}/join-video
+  /// Returns { token: <dyte_participant_token>, meeting_id }
+  Future<Map<String, dynamic>?> joinVideoSession(String sessionId) async {
+    final url =
+    Uri.parse('$baseUrl/api/v1/sessions/$sessionId/join-video');
+    try {
+      final response = await http
+          .post(url, headers: await _getHeaders())
+          .timeout(const Duration(seconds: 20));
+
+      if (response.statusCode == 200) return json.decode(response.body);
+      debugPrint(
+          "❌ joinVideoSession ${response.statusCode}: ${response.body}");
+      return null;
+    } catch (e) {
+      debugPrint("❌ joinVideoSession Error: $e");
+      return null;
+    }
+  }
+
+  /// POST /api/v1/sessions/{session_id}/end
+  /// Marks the session as completed in the backend after the video call ends.
+  Future<bool> endVideoSession(String sessionId) async {
+    final url = Uri.parse('$baseUrl/api/v1/sessions/$sessionId/end');
+    try {
+      // ✅ Correctly using the existing _getHeaders() method
+      final response = await http.post(
+        url,
+        headers: await _getHeaders(),
+      ).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        debugPrint("✅ Session $sessionId successfully ended in backend.");
+        return true;
+      }
+      debugPrint("❌ endVideoSession ${response.statusCode}: ${response.body}");
+      return false;
+    } catch (e) {
+      debugPrint("❌ Error ending session: $e");
       return false;
     }
   }

@@ -5,6 +5,8 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/status.dart' as ws_status;
 import '../theme/app_theme.dart';
 import '../services/chat_service.dart';
+import '../services/mentor_service.dart'; // ✅ Added to check for active sessions
+import 'video_call_screen.dart'; // ✅ Added to launch the VC
 
 // --- Data Model ---
 class ChatMessage {
@@ -45,6 +47,8 @@ class MentorChatScreen extends StatefulWidget {
 
 class _MentorChatScreenState extends State<MentorChatScreen> {
   final ChatService _chatService = ChatService();
+  final MentorService _mentorService = MentorService(); // ✅ Added to fetch sessions
+
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
@@ -65,6 +69,7 @@ class _MentorChatScreenState extends State<MentorChatScreen> {
   bool _isLoadingRequests = false;
   bool _isLoadingChats = false;
   bool _isLoadingHistory = false;
+  bool _isJoiningCall = false; // ✅ Added loading state for the VC button
 
   @override
   void initState() {
@@ -208,6 +213,72 @@ class _MentorChatScreenState extends State<MentorChatScreen> {
     }
   }
 
+  // ✅ NEW: Smart backend-driven Video Call Logic
+  Future<void> _handleVideoCallClick() async {
+    setState(() => _isJoiningCall = true);
+    try {
+      // 1. Ask backend for all upcoming sessions
+      final sessions = await _mentorService.getUpcomingSessions();
+
+      // 2. Search for a live/upcoming session with THIS specific chat partner
+      Map<String, dynamic>? activeSession;
+      for (var s in sessions) {
+        if (s['other_user_id']?.toString() == _currentChatPartnerId) {
+          // If it is live or starting in the next 5 minutes
+          if (s['is_live'] == true || (s['seconds_until_start'] != null && s['seconds_until_start'] <= 300)) {
+            activeSession = s;
+            break;
+          }
+        }
+      }
+
+      // 3. If no session is active, politely reject the call attempt
+      if (activeSession == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("No active scheduled session right now. Book a slot first!"),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        setState(() => _isJoiningCall = false);
+        return;
+      }
+
+      // 4. We found a valid session! Get the token and launch Dyte
+      final sessionId = activeSession['session_id'].toString();
+      final result = await _mentorService.joinVideoSession(sessionId);
+
+      if (result != null && mounted) {
+        final String dyteToken = result['token'] ?? '';
+
+        // ✅ AWAIT the video call screen. The code pauses here while they chat.
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => VideoCallScreen(token: dyteToken),
+          ),
+        );
+
+        // ✅ Tell backend the call is over once the screen closes
+        await _mentorService.endVideoSession(sessionId);
+
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Failed to generate video call token. Try again."),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint("VC Error: $e");
+    } finally {
+      if (mounted) setState(() => _isJoiningCall = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -304,9 +375,21 @@ class _MentorChatScreenState extends State<MentorChatScreen> {
         ],
       ),
       actions: [
-        IconButton(
+        // ✅ NEW: Replaced standard icon with the smart action and loading spinner
+        _isJoiningCall
+            ? const Padding(
+          padding: EdgeInsets.only(right: 20.0),
+          child: Center(
+            child: SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.mentor),
+            ),
+          ),
+        )
+            : IconButton(
           icon: const Icon(Icons.videocam_rounded, color: AppTheme.mentor, size: 26),
-          onPressed: () {},
+          onPressed: _handleVideoCallClick,
         ),
         const SizedBox(width: 10),
       ],
@@ -336,7 +419,6 @@ class _MentorChatScreenState extends State<MentorChatScreen> {
           final String sId = student['user_id'].toString();
           final String sName = student['full_name'] ?? "Student";
 
-          // ✅ Updated UI: White card with thin green border
           return Card(
             elevation: 0,
             margin: const EdgeInsets.only(bottom: 12),

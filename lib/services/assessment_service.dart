@@ -38,7 +38,8 @@ class AssessmentService {
     return "9-11";
   }
 
-  // --- FETCH USER PROFILE & PROGRESS ---
+  // ── USER PROFILE ─────────────────────────────────────────────────────────
+
   Future<Map<String, dynamic>> getUserProfile() async {
     final url = "$baseUrl/api/v1/auth/users/me/";
     try {
@@ -63,7 +64,8 @@ class AssessmentService {
     }
   }
 
-  // --- GET AUTH TOKEN (used by ChatScreen for WebSocket handshake) ---
+  // ── AUTH TOKEN ────────────────────────────────────────────────────────────
+
   Future<String> getAuthToken() async {
     final token = await TokenService.getToken();
     if (token == null || token.isEmpty) {
@@ -72,7 +74,8 @@ class AssessmentService {
     return token;
   }
 
-  // --- GET CHAT MESSAGES (24h history for a given other user) ---
+  // ── CHAT MESSAGES ─────────────────────────────────────────────────────────
+
   Future<List<dynamic>> getChatMessages(String otherUserId) async {
     final url = Uri.parse("$baseUrl/api/v1/chat/messages/$otherUserId");
     try {
@@ -80,10 +83,9 @@ class AssessmentService {
           .get(url, headers: await _getHeaders())
           .timeout(const Duration(seconds: 15));
 
-      if (response.statusCode == 200) {
-        return json.decode(response.body);
-      }
-      debugPrint("getChatMessages error ${response.statusCode}: ${response.body}");
+      if (response.statusCode == 200) return json.decode(response.body);
+      debugPrint(
+          "getChatMessages error ${response.statusCode}: ${response.body}");
       return [];
     } catch (e) {
       debugPrint("❌ getChatMessages exception: $e");
@@ -91,28 +93,29 @@ class AssessmentService {
     }
   }
 
-  // --- AI RECOMMENDATIONS ---
+  // ── AI RECOMMENDATIONS ────────────────────────────────────────────────────
+
   Future<Map<String, dynamic>> getAIRecommendations() async {
     final url = "$baseUrl/api/v1/ai/recommend";
     try {
-      final response = await http.post(
-        Uri.parse(url),
-        headers: await _getHeaders(),
-      ).timeout(const Duration(seconds: 45));
+      final response = await http
+          .post(Uri.parse(url), headers: await _getHeaders())
+          .timeout(const Duration(seconds: 45));
 
       if (response.statusCode == 200) {
         return json.decode(response.body);
       } else {
         final error = json.decode(response.body);
-        throw Exception(error['detail'] ??
-            "AI Recommendation failed: ${response.statusCode}");
+        throw Exception(
+            error['detail'] ?? "AI Recommendation failed: ${response.statusCode}");
       }
     } catch (e) {
       throw Exception("AI Engine Error: $e");
     }
   }
 
-  // --- SELECT CAREER ---
+  // ── SELECT CAREER ─────────────────────────────────────────────────────────
+
   Future<bool> selectCareer(String careerTitle) async {
     final url = "$baseUrl/api/v1/ai/select-career";
     try {
@@ -128,7 +131,8 @@ class AssessmentService {
     }
   }
 
-  // --- FETCH QUESTIONS ---
+  // ── FETCH QUESTIONS ───────────────────────────────────────────────────────
+
   Future<Map<String, dynamic>> fetchQuestions(String uiTitle,
       {String? grade, String? currentClass}) async {
     final moduleName = moduleMapping[uiTitle] ?? uiTitle.toLowerCase();
@@ -140,10 +144,9 @@ class AssessmentService {
     }
 
     try {
-      final response = await http.get(
-        Uri.parse(url),
-        headers: await _getHeaders(),
-      ).timeout(const Duration(seconds: 15));
+      final response = await http
+          .get(Uri.parse(url), headers: await _getHeaders())
+          .timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
         return json.decode(response.body);
@@ -156,7 +159,8 @@ class AssessmentService {
     }
   }
 
-  // --- SUBMIT ANSWERS ---
+  // ── SUBMIT ANSWERS ────────────────────────────────────────────────────────
+
   Future<bool> submitAnswers(
       String uiTitle, Map<String, dynamic> answers) async {
     final moduleKey = moduleMapping[uiTitle] ?? uiTitle.toLowerCase();
@@ -177,8 +181,7 @@ class AssessmentService {
     try {
       final response = await http
           .post(Uri.parse(url),
-          headers: await _getHeaders(),
-          body: json.encode(requestBody))
+          headers: await _getHeaders(), body: json.encode(requestBody))
           .timeout(const Duration(seconds: 15));
 
       return (response.statusCode == 200 || response.statusCode == 201);
@@ -187,7 +190,8 @@ class AssessmentService {
     }
   }
 
-  // --- GENERATE AND SAVE ROADMAP ---
+  // ── ROADMAP ───────────────────────────────────────────────────────────────
+
   Future<Map<String, dynamic>> generateAndSaveRoadmap(
       String careerTitle) async {
     final headers = await _getHeaders();
@@ -224,7 +228,6 @@ class AssessmentService {
     }
   }
 
-  // --- GET CURRENT ROADMAP ---
   Future<Map<String, dynamic>?> getCurrentRoadmap() async {
     final url = "$baseUrl/api/v1/roadmaps/current";
     try {
@@ -239,7 +242,6 @@ class AssessmentService {
     }
   }
 
-  // --- TOGGLE TASK COMPLETION ---
   Future<Map<String, dynamic>> toggleTaskCompletion(String taskId) async {
     final url = "$baseUrl/api/v1/roadmaps/tasks/$taskId/complete";
     try {
@@ -253,7 +255,8 @@ class AssessmentService {
     }
   }
 
-  // --- PARENT/STUDENT LINKING ---
+  // ── PARENT / STUDENT LINKING ──────────────────────────────────────────────
+
   Future<String?> getStudentInviteCode() async {
     final url = "$baseUrl/api/v1/students/invite-code";
     try {
@@ -324,8 +327,10 @@ class AssessmentService {
     }
   }
 
-  // --- MENTORSHIP ---
+  // ── MENTORSHIP ────────────────────────────────────────────────────────────
 
+  /// GET /api/v1/mentorship/search/
+  /// Returns list of { id (mentor profile UUID), user_id, full_name, expertise, ... }
   Future<List<dynamic>> searchMentors(
       {String careerGoal = "technology"}) async {
     final url = Uri.parse(
@@ -336,6 +341,9 @@ class AssessmentService {
         : throw Exception('Failed to fetch mentors');
   }
 
+  /// GET /api/v1/chat/connections
+  /// Returns list of { user_id, full_name, role, request_type }
+  /// NOTE: does NOT include the mentor's profile UUID (mentor.id).
   Future<List<dynamic>> getAcceptedConnections() async {
     final url = Uri.parse("$baseUrl/api/v1/chat/connections");
     try {
@@ -350,6 +358,53 @@ class AssessmentService {
     } catch (e) {
       debugPrint("❌ Error fetching accepted mentors: $e");
       return [];
+    }
+  }
+
+  /// GET /api/v1/mentorship/mentors/{mentor_profile_id}
+  /// Given a mentor's PROFILE UUID (Mentor.id), return full mentor data.
+  Future<Map<String, dynamic>?> getMentorById(String mentorProfileId) async {
+    if (mentorProfileId.isEmpty) return null;
+    final url =
+    Uri.parse('$baseUrl/api/v1/mentorship/mentors/$mentorProfileId');
+    try {
+      final response = await http
+          .get(url, headers: await _getHeaders())
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) return json.decode(response.body);
+      return null;
+    } catch (e) {
+      debugPrint("❌ getMentorById Error: $e");
+      return null;
+    }
+  }
+
+  /// Looks up the mentor PROFILE UUID (Mentor.id) for a given user_id.
+  ///
+  /// Strategy: search mentors broadly and find the one whose user_id matches.
+  /// This is needed because /api/v1/chat/connections only returns user_id,
+  /// but /api/v1/availability/{mentor_id} needs the mentor profile UUID.
+  Future<String?> getMentorProfileIdByUserId(String userId) async {
+    if (userId.isEmpty) return null;
+    try {
+      // Search with a broad term to get all mentors, then filter by user_id
+      final mentors = await searchMentors(careerGoal: "mentor");
+      for (final m in mentors) {
+        if (m['user_id']?.toString() == userId) {
+          return m['id']?.toString();
+        }
+      }
+      // If not found with "mentor", try "technology" as fallback
+      final mentors2 = await searchMentors(careerGoal: "technology");
+      for (final m in mentors2) {
+        if (m['user_id']?.toString() == userId) {
+          return m['id']?.toString();
+        }
+      }
+      return null;
+    } catch (e) {
+      debugPrint("❌ getMentorProfileIdByUserId Error: $e");
+      return null;
     }
   }
 
