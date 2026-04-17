@@ -220,7 +220,7 @@ class _ParentDashboardState extends State<ParentDashboard> {
             borderRadius: BorderRadius.circular(10),
             child: LinearProgressIndicator(
               // If data exists but progress isn't defined, default to a small visual start (0.1)
-              value: hasRoadmap ? (_roadmapData!['overall_progress']?.toDouble() ?? 0.1) : 0.0,
+              value: hasRoadmap ? ((_roadmapData!['progress_percentage'] ?? 0.0) / 100.0) : 0.0,
               minHeight: 6,
               backgroundColor: Colors.white.withOpacity(0.2),
               valueColor: const AlwaysStoppedAnimation(Color(0xFF00FFC2)),

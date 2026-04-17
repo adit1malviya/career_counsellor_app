@@ -40,35 +40,33 @@ class _StudentDashboardState extends State<StudentDashboard> {
       final roadmap = await _apiService.getCurrentRoadmap();
       final profileData = await _apiService.getUserProfile();
 
-      // 1. Determine career goal for mentor search (fallback to technology)
       final aspiration = profileData['aspiration_data'] ?? {};
       String goal = aspiration['dream_career'] ?? "technology";
-
-      // 2. Fetch dynamic mentors from backend [cite: 72]
       final mentors = await _apiService.searchMentors(careerGoal: goal);
 
+      // --- UPDATED SCORE EXTRACTION LOGIC ---
       final Map<String, dynamic> apti = profileData['apti_data'] ?? {};
-      final Map<String, dynamic> scores = apti['scores'] ?? {};
-      final double max = (scores['max_score'] ?? 15).toDouble();
+
+      // Check if data is nested in 'scores' or 'payload' or just at the top level
+      final Map<String, dynamic> dataBuffer = apti['scores'] ?? apti['payload'] ?? apti;
+
+      final double max = (dataBuffer['max_score'] ?? 15).toDouble();
 
       if (mounted) {
         setState(() {
           _hasActiveRoadmap = roadmap != null;
           _userName = profileData['full_name'] ?? "Student";
-          _recommendedMentors = mentors; // ✅ Sync mentors from backend
-
-          _logicalScore = ((scores['logical'] ?? 0).toDouble()) / max;
-          _quantScore = ((scores['quantitative'] ?? 0).toDouble()) / max;
-          _verbalScore = ((scores['verbal'] ?? 0).toDouble()) / max;
+          _recommendedMentors = mentors;
+          _logicalScore = ((dataBuffer['logical'] ?? dataBuffer['logical_score'] ?? 0).toDouble()) / max;
+          _quantScore = ((dataBuffer['quantitative'] ?? dataBuffer['quantitative_score'] ?? 0).toDouble()) / max;
+          _verbalScore = ((dataBuffer['verbal'] ?? dataBuffer['verbal_score'] ?? 0).toDouble()) / max;
 
           _isLoadingStatus = false;
         });
       }
     } catch (e) {
       debugPrint("❌ Error loading dashboard data: $e");
-      if (mounted) {
-        setState(() => _isLoadingStatus = false);
-      }
+      if (mounted) setState(() => _isLoadingStatus = false);
     }
   }
 
