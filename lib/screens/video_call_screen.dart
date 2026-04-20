@@ -18,6 +18,10 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   bool _isCheckingPermissions = true;
   bool _hasPermissions = false;
 
+  // ✅ NEW: Keep track of whether we are in the call
+  bool _isInCall = false;
+  Widget? _rtkWidget;
+
   @override
   void initState() {
     super.initState();
@@ -45,15 +49,12 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       final meetingInfo = RtkMeetingInfo(authToken: widget.token);
       final uiKitInfo = RealtimeKitUIInfo(meetingInfo);
 
-      // The builder now returns the Widget directly! No need for loadUI().
-      final rtkWidget = RealtimeKitUIBuilder.build(uiKitInfo: uiKitInfo);
+      setState(() {
+        // ✅ FIX: Build the widget and switch the UI state, DO NOT pushReplacement!
+        _rtkWidget = RealtimeKitUIBuilder.build(uiKitInfo: uiKitInfo);
+        _isInCall = true;
+      });
 
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => rtkWidget,
-        ),
-      );
     } catch (e) {
       debugPrint("Failed to load RealtimeKit UI: $e");
       ScaffoldMessenger.of(context).showSnackBar(
@@ -64,7 +65,18 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // STATE 1: Loading
+    // STATE 1: Actually inside the Video Call
+    // If the user clicked "Enter Session", we just show the video widget!
+    if (_isInCall && _rtkWidget != null) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: SafeArea(
+          child: _rtkWidget!,
+        ),
+      );
+    }
+
+    // STATE 2: Loading Permissions
     if (_isCheckingPermissions) {
       return const Scaffold(
         backgroundColor: Colors.black,
@@ -81,7 +93,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       );
     }
 
-    // STATE 2: Permissions Denied
+    // STATE 3: Permissions Denied
     if (!_hasPermissions) {
       return Scaffold(
         backgroundColor: Colors.black,
@@ -114,7 +126,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       );
     }
 
-    // STATE 3: Ready to Join
+    // STATE 4: Ready to Join
     return Scaffold(
       backgroundColor: Colors.black,
       body: Center(

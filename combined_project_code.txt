@@ -4604,7 +4604,6 @@ class _LoginScreenState extends State<LoginScreen> {
   bool isLogin = true;
   bool isLoading = false;
 
-  // ✅ Secure Storage — Updated to use EncryptedSharedPreferences for Android reliability
   final _storage = const FlutterSecureStorage(
     aOptions: AndroidOptions(
       encryptedSharedPreferences: true,
@@ -4652,9 +4651,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       if (isLogin) {
-        // ✅ login() now returns Map<String, dynamic>
-        //    'error' key    → failure, show the message
-        //    'access_token' → success, save token and navigate
         final Map<String, dynamic> response = await authService.login(
           email: _emailController.text.trim(),
           password: _passController.text.trim(),
@@ -4662,18 +4658,14 @@ class _LoginScreenState extends State<LoginScreen> {
         );
 
         if (response.containsKey('error')) {
-          // ✅ Show the REAL error (role mismatch, wrong password, etc.)
           _showSnackBar(response['error'] as String, Colors.red);
         } else if (response.containsKey('access_token')) {
           final String token = response['access_token'] as String;
 
-          // ✅ STEP 1: Write token to secure storage
           await _storage.write(key: 'auth_token', value: token);
 
-          // ✅ STEP 2: Read back immediately to confirm it was stored
           final String? verify = await _storage.read(key: 'auth_token');
 
-          // ✅ STEP 3: Log result clearly in debug console
           debugPrint("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
           if (verify != null && verify.isNotEmpty) {
             debugPrint("✅ TOKEN SUCCESSFULLY STORED IN SECURE STORAGE");
@@ -4688,9 +4680,7 @@ class _LoginScreenState extends State<LoginScreen> {
         } else {
           _showSnackBar("Unexpected server response. Please try again.", Colors.red);
         }
-
       } else {
-        // ✅ register() still returns String — unchanged
         final String regResult = await authService.register(
           email: _emailController.text.trim(),
           password: _passController.text.trim(),
@@ -4716,8 +4706,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // --- UI HELPERS ---
-
   void _showSnackBar(String message, Color color) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -4728,29 +4716,24 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // ✅ ADD 'async' here
   void _navigateToDashboard() async {
     Widget nextScreen;
 
     if (widget.role == "Student") {
       nextScreen = const StudentDashboard();
-    }
-    else if (widget.role == "Parent") {
+    } else if (widget.role == "Parent") {
       final AssessmentService apiService = AssessmentService();
 
-      // Show a loading indicator while checking status
       showDialog(
           context: context,
-          barrierDismissible: false, // Prevents user from tapping away
-          builder: (context) => const Center(child: CircularProgressIndicator())
-      );
+          barrierDismissible: false,
+          builder: (context) => const Center(child: CircularProgressIndicator()));
 
       try {
-        // ✅ This MUST be awaited to get the real result from PostgreSQL
         final status = await apiService.getLinkedStudentStatus();
 
         if (!mounted) return;
-        Navigator.pop(context); // Close the loading dialog
+        Navigator.pop(context);
 
         if (status['is_linked'] == true) {
           nextScreen = const ParentDashboard();
@@ -4763,14 +4746,12 @@ class _LoginScreenState extends State<LoginScreen> {
         _showSnackBar("Session error: Please link your ward manually.", Colors.orange);
         nextScreen = const LinkWardScreen();
       }
-    }
-    else if (widget.role == "Mentor") {
+    } else if (widget.role == "Mentor") {
       nextScreen = const MentorDashboard();
     } else {
       return;
     }
 
-    // Final navigation
     if (mounted) {
       Navigator.pushReplacement(
         context,
@@ -4781,21 +4762,46 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final h = MediaQuery.of(context).size.height;
+    // ── Responsive helpers ──────────────────────────────────────────────────
+    final mq = MediaQuery.of(context);
+    final sw = mq.size.width;   // screen width
+    final sh = mq.size.height;  // screen height
+
+    // Scale factor relative to a 390×844 baseline (iPhone 14 logical pixels).
+    // Clamp between 0.8 and 1.2 so extremely small/large screens don't go wild.
+    final double sf = (sw / 390).clamp(0.80, 1.20);
+
+    // Responsive spacing helpers
+    double rw(double v) => v * sf;           // width / horizontal
+    double rh(double v) => v * (sh / 844);  // height / vertical
+    double rs(double v) => v * sf;           // font sizes
+
+    // White card height fractions — adjusted per form state
+    final double cardHeightFraction = isLogin ? 0.68 : 0.84;
+    // On very short screens (< 700 dp) the card should grow a bit more
+    final double cardHeightFraction2 =
+    sh < 700 ? (isLogin ? 0.75 : 0.92) : cardHeightFraction;
+
+    final double ellipseY = isLogin ? rh(150) : rh(80);
+
     return Scaffold(
       backgroundColor: AppTheme.backgroundBottom,
+      // Keeps the layout from being pushed up by the soft keyboard
+      resizeToAvoidBottomInset: true,
       body: LayoutBuilder(
         builder: (context, constraints) {
           return SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
             child: ConstrainedBox(
               constraints: BoxConstraints(minHeight: constraints.maxHeight),
               child: IntrinsicHeight(
                 child: Stack(
                   children: [
+                    // ── Background gradient + image ─────────────────────────
                     Align(
                       alignment: Alignment.bottomCenter,
                       child: Container(
-                        height: h * 0.45,
+                        height: sh * 0.45,
                         width: double.infinity,
                         decoration: const BoxDecoration(
                           gradient: LinearGradient(
@@ -4809,20 +4815,23 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: Image.network(
                             'https://images.unsplash.com/photo-1523240795612-9a054b0db644?q=80&w=2070',
                             fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image),
+                            errorBuilder: (context, error, stackTrace) =>
+                            const Icon(Icons.broken_image),
                           ),
                         ),
                       ),
                     ),
+
+                    // ── White animated card ─────────────────────────────────
                     AnimatedContainer(
                       duration: const Duration(milliseconds: 500),
                       curve: Curves.easeInOutCirc,
-                      height: isLogin ? h * 0.68 : h * 0.82,
+                      height: sh * cardHeightFraction2,
                       width: double.infinity,
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.vertical(
-                          bottom: Radius.elliptical(300, isLogin ? 150 : 80),
+                          bottom: Radius.elliptical(rw(300), ellipseY),
                         ),
                         boxShadow: [
                           BoxShadow(
@@ -4835,10 +4844,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       child: SafeArea(
                         bottom: false,
                         child: SingleChildScrollView(
-                          padding: const EdgeInsets.symmetric(horizontal: 32),
+                          padding: EdgeInsets.symmetric(horizontal: rw(32)),
                           child: Column(
                             children: [
-                              const SizedBox(height: 10),
+                              SizedBox(height: rh(10)),
+
+                              // Toggle Login / Sign-up
                               GestureDetector(
                                 onTap: () => setState(() => isLogin = !isLogin),
                                 child: Text(
@@ -4846,42 +4857,93 @@ class _LoginScreenState extends State<LoginScreen> {
                                   style: AppTheme.subheading.copyWith(
                                     fontWeight: FontWeight.w800,
                                     color: AppTheme.primary,
+                                    fontSize: rs(15),
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 20),
+                              SizedBox(height: rh(20)),
+
+                              // Heading
                               Text(
                                 isLogin ? "Welcome Back" : "Join Us",
-                                style: AppTheme.heading.copyWith(fontSize: 34, letterSpacing: -1),
+                                style: AppTheme.heading.copyWith(
+                                  fontSize: rs(34),
+                                  letterSpacing: -1,
+                                ),
                               ),
-                              Text("Logging in as ${widget.role}", style: TextStyle(color: Colors.grey.shade500)),
-                              const SizedBox(height: 30),
+                              Text(
+                                "Logging in as ${widget.role}",
+                                style: TextStyle(
+                                  color: Colors.grey.shade500,
+                                  fontSize: rs(13),
+                                ),
+                              ),
+                              SizedBox(height: rh(30)),
+
+                              // Full-name field (sign-up only)
                               if (!isLogin) ...[
-                                _buildTextField("Full Name", Icons.person_outline, controller: _nameController),
-                                const SizedBox(height: 16),
+                                _buildTextField(
+                                  "Full Name",
+                                  Icons.person_outline,
+                                  controller: _nameController,
+                                  sf: sf,
+                                ),
+                                SizedBox(height: rh(16)),
                               ],
-                              _buildTextField("Email address", Icons.email_outlined, controller: _emailController),
-                              const SizedBox(height: 16),
-                              _buildTextField("Password", Icons.lock_outline, isPassword: true, controller: _passController),
+
+                              _buildTextField(
+                                "Email address",
+                                Icons.email_outlined,
+                                controller: _emailController,
+                                sf: sf,
+                              ),
+                              SizedBox(height: rh(16)),
+
+                              _buildTextField(
+                                "Password",
+                                Icons.lock_outline,
+                                isPassword: true,
+                                controller: _passController,
+                                sf: sf,
+                              ),
+
                               if (!isLogin) ...[
-                                const SizedBox(height: 16),
-                                _buildTextField("Confirm Password", Icons.lock_outline, isPassword: true, controller: _confPassController),
-                              ],
-                              if (isLogin) ...[
-                                const SizedBox(height: 12),
-                                Align(
-                                  alignment: Alignment.centerRight,
-                                  child: Text("Forgot password?",
-                                      style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.bold, fontSize: 13)),
+                                SizedBox(height: rh(16)),
+                                _buildTextField(
+                                  "Confirm Password",
+                                  Icons.lock_outline,
+                                  isPassword: true,
+                                  controller: _confPassController,
+                                  sf: sf,
                                 ),
                               ],
-                              const SizedBox(height: 35),
+
+                              if (isLogin) ...[
+                                SizedBox(height: rh(12)),
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: Text(
+                                    "Forgot password?",
+                                    style: TextStyle(
+                                      color: AppTheme.primary,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: rs(13),
+                                    ),
+                                  ),
+                                ),
+                              ],
+
+                              SizedBox(height: rh(35)),
+
+                              // Auth button
                               ElevatedButton(
                                 onPressed: isLoading ? null : _handleAuth,
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: AppTheme.textPrimary,
-                                  minimumSize: const Size(double.infinity, 60),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                  minimumSize: Size(double.infinity, rh(60)),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(rw(20)),
+                                  ),
                                   elevation: 5,
                                   shadowColor: AppTheme.textPrimary.withOpacity(0.3),
                                 ),
@@ -4889,16 +4951,22 @@ class _LoginScreenState extends State<LoginScreen> {
                                     ? const CircularProgressIndicator(color: Colors.white)
                                     : Text(
                                   isLogin ? "Log in" : "Sign up",
-                                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: rs(16),
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ),
-                              const SizedBox(height: 20),
+                              SizedBox(height: rh(20)),
                             ],
                           ),
                         ),
                       ),
                     ),
-                    _buildSocialSection(),
+
+                    // ── Social section (sits below the card) ─────────────────
+                    _buildSocialSection(sf: sf, sh: sh),
                   ],
                 ),
               ),
@@ -4909,37 +4977,55 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _buildSocialSection() {
+  Widget _buildSocialSection({required double sf, required double sh}) {
+    double rw(double v) => v * sf;
+    double rh(double v) => v * (sh / 844);
+    double rs(double v) => v * sf;
+
     return Align(
       alignment: Alignment.bottomCenter,
       child: Padding(
-        padding: const EdgeInsets.only(bottom: 35, top: 20),
+        padding: EdgeInsets.only(bottom: rh(35), top: rh(20)),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 45),
+              padding: EdgeInsets.symmetric(horizontal: rw(45)),
               child: Row(
                 children: [
-                  Expanded(child: Container(height: 1.5, color: Colors.black.withOpacity(0.1))),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 15),
+                  Expanded(
+                      child: Container(height: 1.5, color: Colors.black.withOpacity(0.1))),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: rw(15)),
                     child: Text(
-                        "or continue with",
-                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Colors.black54)
+                      "or continue with",
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: rs(13),
+                        color: Colors.black54,
+                      ),
                     ),
                   ),
-                  Expanded(child: Container(height: 1.5, color: Colors.black.withOpacity(0.1))),
+                  Expanded(
+                      child: Container(height: 1.5, color: Colors.black.withOpacity(0.1))),
                 ],
               ),
             ),
-            const SizedBox(height: 25),
+            SizedBox(height: rh(25)),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _buildSocialButton('https://www.gstatic.com/images/branding/googleg/1x/googleg_standard_color_128dp.png'),
-                const SizedBox(width: 25),
-                _buildSocialButton('https://upload.wikimedia.org/wikipedia/commons/thumb/0/05/Facebook_Logo_%282019%29.png/600px-Facebook_Logo_%282019%29.png'),
+                _buildSocialButton(
+                  'https://www.gstatic.com/images/branding/googleg/1x/googleg_standard_color_128dp.png',
+                  sf: sf,
+                  sh: sh,
+                ),
+                SizedBox(width: rw(25)),
+                _buildSocialButton(
+                  'https://upload.wikimedia.org/wikipedia/commons/thumb/0/05/Facebook_Logo_%282019%29.png/600px-Facebook_Logo_%282019%29.png',
+                  sf: sf,
+                  sh: sh,
+                ),
               ],
             ),
           ],
@@ -4948,47 +5034,66 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _buildTextField(String hint, IconData icon, {bool isPassword = false, TextEditingController? controller}) {
+  Widget _buildTextField(
+      String hint,
+      IconData icon, {
+        bool isPassword = false,
+        TextEditingController? controller,
+        required double sf,
+      }) {
+    final double rs14 = (14 * sf).clamp(12.0, 16.0);
+    final double iconSize = (22 * sf).clamp(18.0, 24.0);
+    final double vertPad = (20 * sf).clamp(14.0, 22.0);
+
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFFF5F7FA),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(18 * sf),
         border: Border.all(color: Colors.black.withOpacity(0.02)),
       ),
       child: TextField(
         controller: controller,
         obscureText: isPassword,
-        style: const TextStyle(fontWeight: FontWeight.w600),
+        style: TextStyle(fontWeight: FontWeight.w600, fontSize: rs14),
         decoration: InputDecoration(
           hintText: hint,
-          hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
-          prefixIcon: Icon(icon, color: AppTheme.textMuted, size: 22),
+          hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: rs14),
+          prefixIcon: Icon(icon, color: AppTheme.textMuted, size: iconSize),
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
+          contentPadding: EdgeInsets.symmetric(vertical: vertPad, horizontal: 20 * sf),
         ),
       ),
     );
   }
 
-  Widget _buildSocialButton(String url) {
+  Widget _buildSocialButton(
+      String url, {
+        required double sf,
+        required double sh,
+      }) {
+    final double size = (62 * sf).clamp(50.0, 70.0);
+    final double pad = (12 * sf).clamp(10.0, 14.0);
+
     return Container(
-      padding: const EdgeInsets.all(12),
-      width: 62, height: 62,
+      padding: EdgeInsets.all(pad),
+      width: size,
+      height: size,
       decoration: BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 15,
-                offset: const Offset(0, 5)
-            )
-          ]
+        color: Colors.white,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          )
+        ],
       ),
       child: Image.network(
         url,
         fit: BoxFit.contain,
-        errorBuilder: (context, error, stackTrace) => const Icon(Icons.public, color: Colors.grey),
+        errorBuilder: (context, error, stackTrace) =>
+        const Icon(Icons.public, color: Colors.grey),
       ),
     );
   }
@@ -5621,7 +5726,7 @@ import '../theme/app_theme.dart';
 import '../services/assessment_service.dart';
 import 'chat_screen.dart';
 import 'student_session_screen.dart';
-import 'student_schedule_screen.dart'; // ✅ Added import for the new schedule screen
+import 'student_schedule_screen.dart';
 
 class MentorListScreen extends StatefulWidget {
   const MentorListScreen({super.key});
@@ -5635,7 +5740,7 @@ class _MentorListScreenState extends State<MentorListScreen> {
 
   List<dynamic> _allMentors = [];
 
-  // ✅ Each entry: { user_id, full_name, role, mentor_profile_id (enriched) }
+  // Each entry: { user_id, full_name, role, mentor_profile_id (enriched) }
   List<Map<String, String>> _myMentors = [];
 
   bool _isLoading = true;
@@ -5665,7 +5770,6 @@ class _MentorListScreenState extends State<MentorListScreen> {
       final List<dynamic> existingRequests = results[2] as List<dynamic>;
 
       // Build a lookup: user_id → mentor_profile_id (Mentor.id)
-      // The searchMentors response includes BOTH id (profile) and user_id
       final Map<String, String> userIdToProfileId = {};
       for (final m in rawAllMentors) {
         final uid = m['user_id']?.toString() ?? '';
@@ -5675,26 +5779,16 @@ class _MentorListScreenState extends State<MentorListScreen> {
         }
       }
 
-      // ✅ Enrich accepted connections with mentor_profile_id
-      // acceptedRaw items: { user_id, full_name, role, request_type }
-      // We need mentor_profile_id to call the availability API later
+      // Enrich accepted connections with mentor_profile_id
       final List<Map<String, String>> enrichedMyMentors = [];
       for (final m in acceptedRaw) {
         final String userId = m['user_id']?.toString() ?? '';
         String profileId = userIdToProfileId[userId] ?? '';
 
-        // If not found in the search results (mentor may not show up in this
-        // career-specific search), try a direct lookup
         if (profileId.isEmpty && userId.isNotEmpty) {
-          debugPrint(
-              "⚠️ mentor_profile_id not in search results for user_id=$userId — fetching directly");
-          final lookedUp =
-          await _apiService.getMentorProfileIdByUserId(userId);
+          final lookedUp = await _apiService.getMentorProfileIdByUserId(userId);
           profileId = lookedUp ?? '';
         }
-
-        debugPrint(
-            "✅ MY MENTOR: user_id=$userId, profile_id=$profileId, name=${m['full_name']}");
 
         enrichedMyMentors.add({
           "user_id":           userId,
@@ -5706,8 +5800,7 @@ class _MentorListScreenState extends State<MentorListScreen> {
       }
 
       // Build the accepted user_id set to filter from ALL MENTORS tab
-      final acceptedUserIds =
-      enrichedMyMentors.map((m) => m['user_id']!).toSet();
+      final acceptedUserIds = enrichedMyMentors.map((m) => m['user_id']!).toSet();
 
       // Filter ALL MENTORS: remove those already accepted
       final filteredAll = rawAllMentors.where((m) {
@@ -5759,39 +5852,11 @@ class _MentorListScreenState extends State<MentorListScreen> {
             position: Tween<Offset>(
               begin: const Offset(1.0, 0.0),
               end:   Offset.zero,
-            ).animate(
-                CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+            ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
             child: child,
           );
         },
         transitionDuration: const Duration(milliseconds: 350),
-      ),
-    );
-  }
-
-  void _openSessionScreen({
-    required String mentorProfileId,
-    required String mentorUserId,
-    required String mentorName,
-  }) {
-    if (mentorProfileId.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-              "Could not find mentor's profile. Please try again later."),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => StudentSessionScreen(
-          mentorProfileId: mentorProfileId, // ✅ Mentor.id (profile UUID)
-          mentorUserId:    mentorUserId,    // ✅ Mentor.user_id (for avatar/chat)
-          mentorName:      mentorName,
-        ),
       ),
     );
   }
@@ -5813,11 +5878,9 @@ class _MentorListScreenState extends State<MentorListScreen> {
             style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900),
           ),
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded,
-                color: Colors.black, size: 20),
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black, size: 20),
             onPressed: () => Navigator.pop(context),
           ),
-          // ✅ NEW: Added the Calendar icon to access My Schedule
           actions: [
             IconButton(
               icon: const Icon(Icons.edit_calendar_rounded, color: AppTheme.student),
@@ -5825,9 +5888,7 @@ class _MentorListScreenState extends State<MentorListScreen> {
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (context) => const StudentScheduleScreen(),
-                  ),
+                  MaterialPageRoute(builder: (context) => const StudentScheduleScreen()),
                 );
               },
             ),
@@ -5837,8 +5898,7 @@ class _MentorListScreenState extends State<MentorListScreen> {
             indicatorColor: AppTheme.student,
             labelColor:     AppTheme.student,
             unselectedLabelColor: Colors.grey,
-            labelStyle:
-            const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
             tabs: const [
               Tab(text: "ALL MENTORS"),
               Tab(text: "MY MENTORS"),
@@ -5846,8 +5906,7 @@ class _MentorListScreenState extends State<MentorListScreen> {
           ),
         ),
         body: _isLoading
-            ? const Center(
-            child: CircularProgressIndicator(color: AppTheme.student))
+            ? const Center(child: CircularProgressIndicator(color: AppTheme.student))
             : TabBarView(
           children: [
             _buildAllMentorsTab(),
@@ -5862,8 +5921,7 @@ class _MentorListScreenState extends State<MentorListScreen> {
 
   Widget _buildAllMentorsTab() {
     if (_allMentors.isEmpty) {
-      return const Center(
-          child: Text("No new mentors found matching your goals."));
+      return const Center(child: Text("No new mentors found matching your goals."));
     }
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
@@ -5896,15 +5954,11 @@ class _MentorListScreenState extends State<MentorListScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.people_outline_rounded,
-                size: 80, color: Colors.grey.shade300),
+            Icon(Icons.people_outline_rounded, size: 80, color: Colors.grey.shade300),
             const SizedBox(height: 16),
             const Text(
               "No mentors assigned yet",
-              style: TextStyle(
-                  color: Colors.grey,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600),
+              style: TextStyle(color: Colors.grey, fontSize: 16, fontWeight: FontWeight.w600),
             ),
           ],
         ),
@@ -5963,41 +6017,25 @@ class _MentorListScreenState extends State<MentorListScreen> {
             padding: const EdgeInsets.all(20),
             child: Row(
               children: [
-                CircleAvatar(
-                    radius: 35,
-                    backgroundImage: NetworkImage(avatarUrl)),
+                CircleAvatar(radius: 35, backgroundImage: NetworkImage(avatarUrl)),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(name,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w900, fontSize: 18)),
+                      Text(name, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
                       const SizedBox(height: 4),
-                      Text(role,
-                          style: TextStyle(
-                              color: Colors.grey.shade600,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500)),
+                      Text(role, style: TextStyle(color: Colors.grey.shade600, fontSize: 13, fontWeight: FontWeight.w500)),
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          const Icon(Icons.star_rounded,
-                              color: Colors.orange, size: 16),
+                          const Icon(Icons.star_rounded, color: Colors.orange, size: 16),
                           const SizedBox(width: 4),
-                          Text(rating,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.bold, fontSize: 12)),
+                          Text(rating, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                           const SizedBox(width: 12),
-                          const Icon(Icons.history_edu_rounded,
-                              color: Colors.grey, size: 16),
+                          const Icon(Icons.history_edu_rounded, color: Colors.grey, size: 16),
                           const SizedBox(width: 4),
-                          Text(sessionLabel,
-                              style: const TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold)),
+                          Text(sessionLabel, style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
                         ],
                       ),
                     ],
@@ -6010,76 +6048,64 @@ class _MentorListScreenState extends State<MentorListScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             decoration: const BoxDecoration(
               color: Color(0xFFF5F9FF),
-              borderRadius:
-              BorderRadius.vertical(bottom: Radius.circular(28)),
+              borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
             ),
             child: Row(
               children: [
-                // Left button: Request Session (my mentors) / View Profile (all)
+                // LEFT BUTTON: Broadcasts (my mentors) OR View Profile (all mentors)
                 Expanded(
                   child: _buildActionButton(
-                    icon: isMyMentorTab
-                        ? Icons.calendar_today_outlined
-                        : Icons.person_outline_rounded,
-                    label:
-                    isMyMentorTab ? "Request Session" : "View Profile",
+                    icon: isMyMentorTab ? Icons.sensors_rounded : Icons.person_outline_rounded,
+                    label: isMyMentorTab ? "Broadcasts" : "View Profile",
                     color: AppTheme.student,
                     onTap: () {
                       if (isMyMentorTab) {
-                        _openSessionScreen(
-                          mentorProfileId: mentorProfileId,
-                          mentorUserId:    userId,
-                          mentorName:      name,
+                        // ✅ Re-routed: Already connected, so check their live broadcasts!
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const StudentScheduleScreen()),
                         );
                       }
                     },
                   ),
                 ),
                 const SizedBox(width: 10),
-                // Right button: Chat (my mentors) / Request Mentorship (all)
+                // RIGHT BUTTON: Chat (my mentors) OR Connect (all mentors)
                 Expanded(
                   child: _buildActionButton(
                     icon: isMyMentorTab
                         ? Icons.chat_bubble_outline_rounded
-                        : (isRequested
-                        ? Icons.check_circle_outline_rounded
-                        : Icons.add_task_rounded),
+                        : (isRequested ? Icons.check_circle_outline_rounded : Icons.wifi_tethering_rounded),
                     label: isMyMentorTab
                         ? "Chat Now"
-                        : (isRequested
-                        ? "Requested"
-                        : "Request Mentorship"),
-                    color: isRequested
-                        ? Colors.grey.shade400
-                        : Colors.white,
-                    textColor:
-                    isRequested ? Colors.white : AppTheme.student,
+                        : (isRequested ? "Requested" : "Connect"),
+                    color: isRequested ? Colors.grey.shade400 : Colors.white,
+                    textColor: isRequested ? Colors.white : AppTheme.student,
                     isOutlined: !isRequested,
                     onTap: () async {
                       if (isMyMentorTab) {
                         _openChat(
-                          userId:    userId,
-                          name:      name,
-                          role:      'mentor',
+                          userId: userId,
+                          name: name,
+                          role: 'mentor',
                           avatarUrl: avatarUrl,
                         );
                         return;
                       }
                       if (!isRequested) {
-                        final bool success =
-                        await _apiService.requestMentorship(
-                            mentorProfileId);
-                        if (success && mounted) {
-                          setState(
-                                  () => _sentRequestIds.add(mentorProfileId));
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                  "Mentorship request sent successfully!"),
-                              backgroundColor: Colors.green,
+                        // ✅ Re-routed: Open the new Student Session Screen to send a Connection Request
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => StudentSessionScreen(
+                              mentorProfileId: mentorProfileId,
+                              mentorUserId: userId,
+                              mentorName: name,
                             ),
-                          );
-                        }
+                          ),
+                        );
+                        // Refresh to update the button to "Requested" if they sent it
+                        _fetchInitialData();
                       }
                     },
                   ),
@@ -6107,9 +6133,7 @@ class _MentorListScreenState extends State<MentorListScreen> {
         decoration: BoxDecoration(
           color:        isOutlined ? Colors.white : color,
           borderRadius: BorderRadius.circular(16),
-          border: isOutlined
-              ? Border.all(color: color.withValues(alpha: 0.2))
-              : null,
+          border: isOutlined ? Border.all(color: color.withValues(alpha: 0.2)) : null,
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -6120,10 +6144,7 @@ class _MentorListScreenState extends State<MentorListScreen> {
               child: Text(
                 label,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    color:      textColor,
-                    fontWeight: FontWeight.bold,
-                    fontSize:   13),
+                style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 13),
               ),
             ),
           ],
@@ -6142,13 +6163,6 @@ import '../theme/app_theme.dart';
 import '../services/mentor_service.dart';
 import 'video_call_screen.dart';
 
-// ─── Day-of-week helper ───────────────────────────────────────────────────────
-
-const List<String> _dayNames = ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const List<String> _dayFull  = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-
-// ─── Screen ───────────────────────────────────────────────────────────────────
-
 class MentorScheduleScreen extends StatefulWidget {
   const MentorScheduleScreen({super.key});
 
@@ -6156,30 +6170,16 @@ class MentorScheduleScreen extends StatefulWidget {
   State<MentorScheduleScreen> createState() => _MentorScheduleScreenState();
 }
 
-class _MentorScheduleScreenState extends State<MentorScheduleScreen>
-    with SingleTickerProviderStateMixin {
+class _MentorScheduleScreenState extends State<MentorScheduleScreen> with SingleTickerProviderStateMixin {
   final MentorService _service = MentorService();
-
-  // ── Tab controller ─────────────────────────────────────────────────────────
   late TabController _tabController;
 
-  // ── Upcoming sessions ──────────────────────────────────────────────────────
   List<dynamic> _upcomingSessions = [];
   bool _isLoadingSessions = true;
 
-  // ── Pending session requests ───────────────────────────────────────────────
   List<dynamic> _pendingRequests = [];
   bool _isLoadingRequests = true;
 
-  // ── Availability slots (Raw from DB) ───────────────────────────────────────
-  List<dynamic> _mySlots = [];
-  bool _isLoadingSlots = true;
-  bool _isSlotsExpanded = false;
-
-  // ── Date UI state ──────────────────────────────────────────────────────────
-  DateTime _selectedDate = DateTime.now();
-
-  // ── Join VC loading state ──────────────────────────────────────────────────
   String? _joiningSessionId;
 
   @override
@@ -6199,77 +6199,46 @@ class _MentorScheduleScreenState extends State<MentorScheduleScreen>
     await Future.wait([
       _fetchSessions(),
       _fetchPendingRequests(),
-      _fetchMySlots(), // This populates the "My Availability" bar
     ]);
-  }
-
-  Future<void> _fetchMySlots() async {
-    if (!mounted) return;
-    setState(() => _isLoadingSlots = true);
-
-    // ✅ Logic: Pass "me" to the service to fetch the logged-in mentor's UUID availability
-    try {
-      final data = await _service.getMentorAvailability("me");
-      if (mounted) {
-        setState(() {
-          _mySlots = data;
-          _isLoadingSlots = false;
-        });
-      }
-    } catch (e) {
-      debugPrint("❌ Error fetching mentor slots: $e");
-      if (mounted) setState(() => _isLoadingSlots = false);
-    }
   }
 
   Future<void> _fetchSessions() async {
     setState(() => _isLoadingSessions = true);
     final data = await _service.getUpcomingSessions();
-    if (mounted) setState(() {
-      _upcomingSessions = data;
-      _isLoadingSessions = false;
-    });
+    if (mounted) setState(() { _upcomingSessions = data; _isLoadingSessions = false; });
   }
 
   Future<void> _fetchPendingRequests() async {
     setState(() => _isLoadingRequests = true);
-    final data = await _service.getPendingSessionRequests();
-    if (mounted) setState(() {
-      _pendingRequests = data;
-      _isLoadingRequests = false;
-    });
+    final data = await _service.getPendingConnectionRequests();
+    if (mounted) setState(() { _pendingRequests = data; _isLoadingRequests = false; });
   }
 
-  // ── Approve a session request ──────────────────────────────────────────────
+  // ── Accept/Reject Connections ──────────────────────────────────────────────
 
-  Future<void> _handleApprove(Map<String, dynamic> req) async {
+  Future<void> _handleConnection(Map<String, dynamic> req, bool isAccept) async {
     final String reqId = req['request_id']?.toString() ?? '';
     if (reqId.isEmpty) return;
 
     final backup = List.from(_pendingRequests);
-    setState(() =>
-        _pendingRequests.removeWhere((r) => r['request_id'] == req['request_id']));
+    setState(() => _pendingRequests.removeWhere((r) => r['request_id'] == req['request_id']));
 
-    final result = await _service.approveSessionRequest(reqId);
+    final success = isAccept
+        ? await _service.acceptConnectionRequest(reqId)
+        : await _service.rejectConnectionRequest(reqId);
 
-    if (result != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-              "✅ Session approved for ${req['student_name'] ?? 'student'}!"),
-          backgroundColor: Colors.green,
-        ),
-      );
-      _loadAll(); // Re-fetch to update "Booked" status in the status bar
-    } else {
-      if (mounted) {
-        setState(() => _pendingRequests = backup);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text("Failed to approve. Please try again."),
-              backgroundColor: Colors.red),
-        );
-      }
+    if (success && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(isAccept ? '✅ Connection approved!' : '❌ Connection rejected.'),
+        backgroundColor: isAccept ? Colors.green : Colors.red,
+      ));
+      _loadAll();
+    } else if (mounted) {
+      setState(() => _pendingRequests = backup);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Action failed. Please try again.'),
+        backgroundColor: Colors.red,
+      ));
     }
   }
 
@@ -6280,45 +6249,29 @@ class _MentorScheduleScreenState extends State<MentorScheduleScreen>
     if (sessionId.isEmpty) return;
 
     setState(() => _joiningSessionId = sessionId);
-
     final result = await _service.joinVideoSession(sessionId);
-
     if (mounted) setState(() => _joiningSessionId = null);
 
     if (result != null && mounted) {
       final String dyteToken = result['token'] ?? '';
+      if (dyteToken.isEmpty) return;
 
-      // ✅ AWAIT the video call screen. Code pauses here while the VC is active.
       await Navigator.push(
         context,
-        MaterialPageRoute(
-          builder: (context) => VideoCallScreen(token: dyteToken),
-        ),
+        MaterialPageRoute(builder: (_) => VideoCallScreen(token: dyteToken)),
       );
 
-      // ✅ Hit the backend to complete the session once they return to this screen
       await _service.endVideoSession(sessionId);
-
-      // ✅ Refresh the mentor's dashboard to reflect the completed session
       _loadAll();
-
-    } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text("Could not start session. Please try again."),
-            backgroundColor: Colors.red),
-      );
     }
   }
 
-  // ── Set availability ───────────────────────────────────────────────────────
+  // ── Create Broadcast Sheet ─────────────────────────────────────────────────
 
-  void _showAddAvailabilitySheet() {
-    int selectedDay = DateTime.now().weekday;
-    TimeOfDay startTime = const TimeOfDay(hour: 9, minute: 0);
-    // ✅ Automatically default to 1 hour later
-    TimeOfDay endTime   = const TimeOfDay(hour: 10, minute: 0);
-    bool _isSaving = false;
+  void _showBroadcastSheet() {
+    final TextEditingController topicController = TextEditingController(text: "Open Mentorship Session");
+    int delayMinutes = 0; // 0 = Instant
+    bool isSaving = false;
 
     showModalBottomSheet(
       context: context,
@@ -6337,175 +6290,82 @@ class _MentorScheduleScreenState extends State<MentorScheduleScreen>
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Center(
-                  child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                          color: Colors.grey[300],
-                          borderRadius: BorderRadius.circular(10))),
-                ),
+                Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)))),
                 const SizedBox(height: 25),
-                const Text("Set Your Availability",
-                    style:
-                    TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+                const Row(
+                  children: [
+                    Icon(Icons.sensors_rounded, color: Colors.redAccent, size: 28),
+                    SizedBox(width: 10),
+                    Text('Go Live', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+                  ],
+                ),
                 const SizedBox(height: 6),
-                const Text(
-                    "Select a start time. Each slot is strictly 1 hour long.",
-                    style: TextStyle(color: Colors.grey, fontSize: 13)),
+                const Text('Broadcast a session to all your connected students.', style: TextStyle(color: Colors.grey, fontSize: 13)),
                 const SizedBox(height: 24),
 
-                _buildInputLabel("Day of Week"),
+                const Text('Topic', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey, fontSize: 13)),
                 const SizedBox(height: 8),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: List.generate(7, (i) {
-                      final day = i + 1;
-                      final isSelected = selectedDay == day;
-                      return GestureDetector(
-                        onTap: () => setSheet(() => selectedDay = day),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 150),
-                          margin: const EdgeInsets.only(right: 8),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? AppTheme.mentor
-                                : const Color(0xFFF8F9FB),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                                color: isSelected
-                                    ? AppTheme.mentor
-                                    : Colors.grey.shade200),
-                          ),
-                          child: Text(
-                            _dayNames[day],
-                            style: TextStyle(
-                                color: isSelected ? Colors.white : Colors.black87,
-                                fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      );
-                    }),
+                TextField(
+                  controller: topicController,
+                  decoration: InputDecoration(
+                    hintText: "e.g. Q&A about Software Engineering",
+                    filled: true,
+                    fillColor: const Color(0xFFF8F9FB),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
                   ),
                 ),
                 const SizedBox(height: 20),
 
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildInputLabel("Start Time"),
-                          const SizedBox(height: 8),
-                          GestureDetector(
-                            onTap: () async {
-                              final t = await showTimePicker(
-                                  context: ctx, initialTime: startTime);
-                              if (t != null) {
-                                setSheet(() {
-                                  startTime = t;
-                                  // ✅ Automatically calculate end time (1 hour later)
-                                  endTime = TimeOfDay(hour: (t.hour + 1) % 24, minute: t.minute);
-                                });
-                              }
-                            },
-                            child: _buildTimeBox(startTime),
-                          ),
-                        ],
-                      ),
+                const Text('When?', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey, fontSize: 13)),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(color: const Color(0xFFF8F9FB), borderRadius: BorderRadius.circular(14)),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<int>(
+                      value: delayMinutes,
+                      isExpanded: true,
+                      items: const [
+                        DropdownMenuItem(value: 0, child: Text("Instant (Live Now)")),
+                        DropdownMenuItem(value: 15, child: Text("In 15 Minutes")),
+                        DropdownMenuItem(value: 60, child: Text("In 1 Hour")),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) setSheet(() => delayMinutes = val);
+                      },
                     ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // ✅ Updated label to show it's fixed
-                          _buildInputLabel("End Time (1 hr fixed)"),
-                          const SizedBox(height: 8),
-                          // ✅ Removed the GestureDetector so the user CANNOT click and change it!
-                          Opacity(
-                            opacity: 0.6, // Makes it look "disabled" or "read-only"
-                            child: _buildTimeBox(endTime),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
                 const SizedBox(height: 28),
 
                 SizedBox(
-                  width: double.infinity,
-                  height: 56,
+                  width: double.infinity, height: 56,
                   child: ElevatedButton(
-                    onPressed: _isSaving
-                        ? null
-                        : () async {
-                      final String start =
-                          "${startTime.hour.toString().padLeft(2, '0')}:${startTime.minute.toString().padLeft(2, '0')}:00";
-                      final String end =
-                          "${endTime.hour.toString().padLeft(2, '0')}:${endTime.minute.toString().padLeft(2, '0')}:00";
+                    onPressed: isSaving ? null : () async {
+                      if (topicController.text.trim().isEmpty) return;
+                      setSheet(() => isSaving = true);
 
-                      if (selectedDay == DateTime.now().weekday) {
-                        if (startTime.hour <= DateTime.now().hour) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text("Today's slots must start at least 1 hour from now.")),
-                          );
-                          return;
-                        }
-                      }
-
-                      setSheet(() => _isSaving = true);
-
-                      final success =
-                      await _service.setAvailability([
-                        {
-                          "day_of_week": selectedDay,
-                          "start_time": start,
-                          "end_time": end,
-                        }
-                      ]);
+                      final result = await _service.broadcastSession(topicController.text.trim(), delayMinutes);
 
                       if (mounted) Navigator.pop(ctx);
 
-                      if (success && mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                                "✅ Availability set for ${_dayFull[selectedDay]}!"),
-                            backgroundColor: AppTheme.mentor,
-                          ),
-                        );
-                        _loadAll(); // Added refresh
+                      if (result != null && mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: const Text('✅ Broadcast scheduled successfully!'),
+                          backgroundColor: AppTheme.mentor,
+                        ));
+                        _loadAll();
                       } else if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                              content: Text(
-                                  "Failed to save availability. Check time ranges."),
-                              backgroundColor: Colors.red),
-                        );
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to start broadcast.'), backgroundColor: Colors.red));
                       }
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppTheme.mentor,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                     ),
-                    child: _isSaving
-                        ? const SizedBox(
-                        height: 22,
-                        width: 22,
-                        child: CircularProgressIndicator(
-                            color: Colors.white, strokeWidth: 2))
-                        : const Text("Save Availability",
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 16)),
+                    child: isSaving
+                        ? const SizedBox(height: 22, width: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : const Text('Create Broadcast', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
                   ),
                 ),
               ],
@@ -6523,314 +6383,75 @@ class _MentorScheduleScreenState extends State<MentorScheduleScreen>
     return Scaffold(
       backgroundColor: const Color(0xFFF4F7F6),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showAddAvailabilitySheet,
-        backgroundColor: AppTheme.mentor,
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text("Set Availability",
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        onPressed: _showBroadcastSheet,
+        backgroundColor: Colors.redAccent,
+        icon: const Icon(Icons.sensors_rounded, color: Colors.white),
+        label: const Text('Go Live', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
       body: NestedScrollView(
         headerSliverBuilder: (_, __) => [
           _buildSliverAppBar(),
-          _buildDateHeader(),
-          // --- Availability Status Bar ---
-          SliverToBoxAdapter(
-            child: _buildAvailabilityStatusBar(),
-          ),
           SliverPersistentHeader(
-            delegate: _TabBarDelegate(
-              TabBar(
-                controller: _tabController,
-                indicatorColor: AppTheme.mentor,
-                labelColor: AppTheme.mentor,
-                unselectedLabelColor: Colors.grey,
-                labelStyle: const TextStyle(
-                    fontWeight: FontWeight.bold, fontSize: 13),
-                tabs: [
-                  Tab(
-                    text: _pendingRequests.isEmpty
-                        ? "REQUESTS"
-                        : "REQUESTS  (${_pendingRequests.length})",
-                  ),
-                  const Tab(text: "UPCOMING"),
-                ],
-              ),
-            ),
+            delegate: _TabBarDelegate(TabBar(
+              controller: _tabController,
+              indicatorColor: AppTheme.mentor,
+              labelColor: AppTheme.mentor,
+              unselectedLabelColor: Colors.grey,
+              labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              tabs: [
+                Tab(text: _pendingRequests.isEmpty ? 'CONNECTIONS' : 'CONNECTIONS (${_pendingRequests.length})'),
+                const Tab(text: 'MY BROADCASTS'),
+              ],
+            )),
             pinned: true,
           ),
         ],
         body: TabBarView(
           controller: _tabController,
-          children: [
-            _buildRequestsTab(),
-            _buildUpcomingTab(),
-          ],
+          children: [_buildRequestsTab(), _buildUpcomingTab()],
         ),
       ),
     );
   }
-
-  // ── Availability Status Bar Logic ──────────────────────────────────────────
-
-  Widget _buildAvailabilityStatusBar() {
-    final int freeCount = _mySlots.where((s) => s['is_booked'] == false).length;
-    final int bookedCount = _mySlots.where((s) => s['is_booked'] == true).length;
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 20)],
-      ),
-      child: Column(
-        children: [
-          GestureDetector(
-            onTap: () => setState(() => _isSlotsExpanded = !_isSlotsExpanded),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.calendar_today_rounded, color: AppTheme.mentor, size: 20),
-                    const SizedBox(width: 12),
-                    const Text("My Availability", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                  ],
-                ),
-                Icon(_isSlotsExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, color: Colors.grey),
-              ],
-            ),
-          ),
-          if (_isSlotsExpanded) ...[
-            const SizedBox(height: 16),
-            if (_isLoadingSlots)
-              const Center(child: CircularProgressIndicator(strokeWidth: 2))
-            else if (_mySlots.isEmpty)
-              const Text("No slots created yet", style: TextStyle(color: Colors.grey, fontSize: 12))
-            else
-              SizedBox(
-                height: 80,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _mySlots.length,
-                  itemBuilder: (context, index) {
-                    final slot = _mySlots[index];
-                    final bool isBooked = slot['is_booked'] ?? false;
-                    return Container(
-                      width: 100,
-                      margin: const EdgeInsets.only(right: 12),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: isBooked ? Colors.orange.withValues(alpha: 0.1) : Colors.green.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: isBooked ? Colors.orange.withValues(alpha: 0.3) : Colors.green.withValues(alpha: 0.3)),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(_dayNames[slot['day_of_week']], style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                          Text(slot['start_time'].toString().substring(0, 5), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900)),
-                          const SizedBox(height: 2),
-                          Text(isBooked ? "BOOKED" : "FREE",
-                              style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: isBooked ? Colors.orange : Colors.green)),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-          ] else ...[
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                _buildStatusChip("${freeCount} Free", Colors.green),
-                const SizedBox(width: 10),
-                _buildStatusChip("${bookedCount} Booked", Colors.orange),
-              ],
-            ),
-          ]
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatusChip(String label, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
-      child: Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold)),
-    );
-  }
-
-  // ── Existing Helper UI ─────────────────────────────────────────────────────
 
   Widget _buildSliverAppBar() {
     return SliverAppBar(
       backgroundColor: const Color(0xFFF4F7F6),
       elevation: 0,
       pinned: true,
-      title: const Text("My Schedule",
-          style: TextStyle(
-              color: Color(0xFF1A2138),
-              fontWeight: FontWeight.w900,
-              fontSize: 22)),
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.refresh_rounded, color: AppTheme.mentor),
-          onPressed: _loadAll,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDateHeader() {
-    return SliverToBoxAdapter(
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(28),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withValues(alpha: 0.02),
-                blurRadius: 20)
-          ],
-        ),
-        child: Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  "${_monthName(_selectedDate.month)} ${_selectedDate.year}",
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w900, fontSize: 18),
-                ),
-                GestureDetector(
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: _selectedDate,
-                      firstDate: DateTime(2025),
-                      lastDate: DateTime(2027),
-                    );
-                    if (picked != null) {
-                      setState(() => _selectedDate = picked);
-                    }
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                        color: AppTheme.mentor.withValues(alpha: 0.1),
-                        shape: BoxShape.circle),
-                    child: const Icon(Icons.calendar_month_rounded,
-                        color: AppTheme.mentor, size: 20),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: List.generate(7, (i) {
-                final day = _selectedDate
-                    .subtract(Duration(days: _selectedDate.weekday - 1))
-                    .add(Duration(days: i));
-                final isToday = day.day == DateTime.now().day &&
-                    day.month == DateTime.now().month;
-                final isSelected = day.day == _selectedDate.day &&
-                    day.month == _selectedDate.month;
-
-                return Column(
-                  children: [
-                    Text(
-                      _dayNames[i + 1],
-                      style: const TextStyle(
-                          color: Colors.grey,
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 150),
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? AppTheme.mentor
-                            : (isToday
-                            ? AppTheme.mentor.withValues(alpha: 0.12)
-                            : Colors.transparent),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Center(
-                        child: Text(
-                          "${day.day}",
-                          style: TextStyle(
-                            color: isSelected
-                                ? Colors.white
-                                : (isToday
-                                ? AppTheme.mentor
-                                : Colors.black87),
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              }),
-            ),
-          ],
-        ),
-      ),
+      title: const Text('Mentor Dashboard', style: TextStyle(color: Color(0xFF1A2138), fontWeight: FontWeight.w900, fontSize: 22)),
+      actions: [IconButton(icon: const Icon(Icons.refresh_rounded, color: AppTheme.mentor), onPressed: _loadAll)],
     );
   }
 
   Widget _buildRequestsTab() {
-    if (_isLoadingRequests) {
-      return const Center(
-          child: CircularProgressIndicator(color: AppTheme.mentor));
-    }
+    if (_isLoadingRequests) return const Center(child: CircularProgressIndicator(color: AppTheme.mentor));
     if (_pendingRequests.isEmpty) {
       return RefreshIndicator(
         onRefresh: _fetchPendingRequests,
-        child: ListView(
-          padding: const EdgeInsets.all(24),
-          children: [
-            const SizedBox(height: 60),
-            Center(
-              child: Column(
-                children: [
-                  Icon(Icons.inbox_rounded, size: 72, color: Colors.grey.shade300),
-                  const SizedBox(height: 16),
-                  const Text("No pending session requests",
-                      style: TextStyle(color: Colors.grey, fontSize: 15)),
-                ],
-              ),
-            ),
-          ],
-        ),
+        child: ListView(padding: const EdgeInsets.all(24), children: [
+          const SizedBox(height: 60),
+          Center(child: Column(children: [
+            Icon(Icons.people_alt_outlined, size: 72, color: Colors.grey.shade300),
+            const SizedBox(height: 16),
+            const Text('No pending connection requests', style: TextStyle(color: Colors.grey, fontSize: 15)),
+          ])),
+        ]),
       );
     }
-
     return RefreshIndicator(
       onRefresh: _fetchPendingRequests,
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
         itemCount: _pendingRequests.length,
-        itemBuilder: (context, i) => _buildRequestCard(_pendingRequests[i]),
+        itemBuilder: (_, i) => _buildRequestCard(_pendingRequests[i]),
       ),
     );
   }
 
   Widget _buildRequestCard(Map<String, dynamic> req) {
-    final String studentName = req['student_name'] ?? "Student";
-    final String timeSlot    = req['time_slot'] ?? "—";
-    final String reqId       = req['request_id']?.toString() ?? '';
+    final String studentName = req['student_name'] ?? 'Student';
+    final String message = req['message'] ?? 'Wants to connect';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -6838,130 +6459,112 @@ class _MentorScheduleScreenState extends State<MentorScheduleScreen>
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(22),
-        border:
-        Border.all(color: AppTheme.mentor.withValues(alpha: 0.12)),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withValues(alpha: 0.03),
-              blurRadius: 12,
-              offset: const Offset(0, 4))
-        ],
+        border: Border.all(color: AppTheme.mentor.withValues(alpha: 0.12)),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 12, offset: const Offset(0, 4))],
       ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 26,
-            backgroundImage: NetworkImage(
-                'https://i.pravatar.cc/150?u=${req['student_id']}'),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(studentName,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w800, fontSize: 15)),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    const Icon(Icons.schedule_rounded,
-                        size: 13, color: Colors.grey),
-                    const SizedBox(width: 4),
-                    Text(timeSlot,
-                        style: const TextStyle(
-                            color: Colors.grey,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600)),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          GestureDetector(
-            onTap: reqId.isEmpty ? null : () => _handleApprove(req),
-            child: Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                  color: Colors.green.shade50,
-                  shape: BoxShape.circle),
-              child:
-              const Icon(Icons.check_rounded, color: Colors.green, size: 22),
-            ),
-          ),
-          const SizedBox(width: 8),
-          GestureDetector(
-            onTap: () => setState(() => _pendingRequests
-                .removeWhere((r) => r['request_id'] == req['request_id'])),
-            child: Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                  color: Colors.red.shade50, shape: BoxShape.circle),
-              child: const Icon(Icons.close_rounded,
-                  color: Colors.redAccent, size: 22),
-            ),
-          ),
-        ],
-      ),
+      child: Row(children: [
+        CircleAvatar(radius: 26, backgroundImage: NetworkImage('https://i.pravatar.cc/150?u=${req['student_id']}')),
+        const SizedBox(width: 14),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(studentName, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+          const SizedBox(height: 4),
+          Text(message, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+        ])),
+        GestureDetector(
+          onTap: () => _handleConnection(req, true),
+          child: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.green.shade50, shape: BoxShape.circle), child: const Icon(Icons.check_rounded, color: Colors.green, size: 22)),
+        ),
+        const SizedBox(width: 8),
+        GestureDetector(
+          onTap: () => _handleConnection(req, false),
+          child: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.red.shade50, shape: BoxShape.circle), child: const Icon(Icons.close_rounded, color: Colors.redAccent, size: 22)),
+        ),
+      ]),
     );
   }
 
   Widget _buildUpcomingTab() {
-    if (_isLoadingSessions) {
-      return const Center(
-          child: CircularProgressIndicator(color: AppTheme.mentor));
-    }
+    if (_isLoadingSessions) return const Center(child: CircularProgressIndicator(color: AppTheme.mentor));
     if (_upcomingSessions.isEmpty) {
       return RefreshIndicator(
         onRefresh: _fetchSessions,
-        child: ListView(
-          padding: const EdgeInsets.all(24),
-          children: [
-            const SizedBox(height: 60),
-            Center(
-              child: Column(
-                children: [
-                  Icon(Icons.event_available_rounded,
-                      size: 72, color: Colors.grey.shade300),
-                  const SizedBox(height: 16),
-                  const Text("No upcoming sessions",
-                      style: TextStyle(color: Colors.grey, fontSize: 15)),
-                ],
-              ),
-            ),
-          ],
-        ),
+        child: ListView(padding: const EdgeInsets.all(24), children: [
+          const SizedBox(height: 60),
+          Center(child: Column(children: [
+            Icon(Icons.sensors_off_rounded, size: 72, color: Colors.grey.shade300),
+            const SizedBox(height: 16),
+            const Text('No active broadcasts', style: TextStyle(color: Colors.grey, fontSize: 15)),
+          ])),
+        ]),
       );
     }
-
     return RefreshIndicator(
       onRefresh: _fetchSessions,
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
         itemCount: _upcomingSessions.length,
-        itemBuilder: (context, i) =>
-            _buildSessionCard(_upcomingSessions[i]),
+        itemBuilder: (_, i) => _buildSessionCard(_upcomingSessions[i]),
       ),
     );
   }
 
   Widget _buildSessionCard(Map<String, dynamic> session) {
     final bool isLive = session['is_live'] == true;
+    final int secsUntil = session['seconds_until_start'] ?? 99999;
+    final String sessionId = session['session_id']?.toString() ?? '';
+    final bool isJoining = _joiningSessionId == sessionId;
+    final bool canJoin = isLive || secsUntil <= 300;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(color: isLive ? AppTheme.mentor : Colors.white, borderRadius: BorderRadius.circular(24)),
-      child: ListTile(
-        title: Text(session['other_party_name'] ?? 'Student', style: TextStyle(color: isLive ? Colors.white : Colors.black, fontWeight: FontWeight.bold)),
-        subtitle: Text(session['scheduled_at'].toString(), style: TextStyle(color: isLive ? Colors.white70 : Colors.grey)),
-        trailing: isLive ? const Icon(Icons.videocam_rounded, color: Colors.white) : null,
-        onTap: isLive ? () => _joinSession(session) : null,
+      decoration: BoxDecoration(
+        color: isLive ? AppTheme.mentor : Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4))],
       ),
+      child: Column(children: [
+        Padding(
+          padding: const EdgeInsets.all(20),
+          child: Row(children: [
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text("Broadcast Session", style: TextStyle(color: isLive ? Colors.white : Colors.black, fontWeight: FontWeight.w900, fontSize: 16)),
+              const SizedBox(height: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: isLive ? Colors.white.withValues(alpha: 0.2) : Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  isLive ? 'LIVE NOW' : (secsUntil < 3600 ? 'In ${secsUntil ~/ 60} min' : 'In ${secsUntil ~/ 3600}h'),
+                  style: TextStyle(color: isLive ? Colors.white : Colors.orange.shade700, fontSize: 11, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ])),
+          ]),
+        ),
+        if (canJoin) InkWell(
+          onTap: isJoining ? null : () => _joinSession(session),
+          borderRadius: const BorderRadius.vertical(bottom: Radius.circular(24)),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            decoration: BoxDecoration(
+              color: isLive ? Colors.white.withValues(alpha: 0.15) : AppTheme.mentor,
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(24)),
+            ),
+            child: Center(child: isJoining
+                ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                : const Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.videocam_rounded, color: Colors.white, size: 18),
+              SizedBox(width: 8),
+              Text('ENTER STUDIO', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13, letterSpacing: 0.5)),
+            ])),
+          ),
+        ),
+      ]),
     );
   }
-
-  Widget _buildInputLabel(String label) => Text(label, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey, fontSize: 13));
-  Widget _buildTimeBox(TimeOfDay t) => Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14), decoration: BoxDecoration(color: const Color(0xFFF8F9FB), borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.grey.shade200)), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(t.format(context), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)), const Icon(Icons.access_time_rounded, color: AppTheme.mentor, size: 18)]));
-  String _monthName(int m) => ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m];
 }
 
 class _TabBarDelegate extends SliverPersistentHeaderDelegate {
@@ -7796,7 +7399,7 @@ FILE: screens\student_schedule_screen.dart
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../services/mentor_service.dart';
-import 'video_call_screen.dart'; // ✅ Added import for the VC screen
+import 'video_call_screen.dart';
 
 class StudentScheduleScreen extends StatefulWidget {
   const StudentScheduleScreen({super.key});
@@ -7840,7 +7443,7 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> {
     if (result != null && mounted) {
       final String dyteToken = result['token'] ?? '';
 
-      // ✅ AWAIT the video call screen. The code pauses here while they chat.
+      // AWAIT the video call screen.
       await Navigator.push(
         context,
         MaterialPageRoute(
@@ -7848,10 +7451,7 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> {
         ),
       );
 
-      // ✅ Once they tap 'Leave Call' and the screen closes, hit the backend!
-      await _service.endVideoSession(sessionId);
-
-      // ✅ Automatically refresh the UI to show the session is complete
+      // Refresh the UI to show the session is complete/updated
       _fetchMySessions();
 
     } else if (mounted) {
@@ -7876,7 +7476,7 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> {
           icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text("My Schedule",
+        title: const Text("My Broadcasts",
             style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900)),
         actions: [
           IconButton(
@@ -7910,15 +7510,15 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.event_busy_rounded, size: 80, color: Colors.grey.shade300),
+              Icon(Icons.sensors_off_rounded, size: 80, color: Colors.grey.shade300),
               const SizedBox(height: 16),
               const Text(
-                "No upcoming sessions",
+                "No upcoming broadcasts",
                 style: TextStyle(color: Colors.grey, fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               const Text(
-                "Book a slot with a mentor to see it here.",
+                "Connect with more mentors to see their sessions here.",
                 style: TextStyle(color: Colors.grey, fontSize: 14),
               ),
             ],
@@ -7929,6 +7529,7 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> {
   }
 
   Widget _buildSessionCard(Map<String, dynamic> session) {
+    // ✅ Logic perfectly aligned: They can only join if it is actually LIVE
     final bool isLive = session['is_live'] == true;
     final int secsUntil = session['seconds_until_start'] ?? 999999;
     final String name = session['other_party_name'] ?? 'Mentor';
@@ -7969,7 +7570,7 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> {
               children: [
                 CircleAvatar(
                   backgroundColor: isLive ? AppTheme.student : AppTheme.student.withValues(alpha: 0.1),
-                  child: Icon(Icons.video_camera_front_rounded, color: isLive ? Colors.white : AppTheme.student),
+                  child: Icon(Icons.sensors_rounded, color: isLive ? Colors.white : AppTheme.student),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -8005,8 +7606,8 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> {
               height: 48,
               child: ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: (isLive || secsUntil <= 300) ? AppTheme.student : Colors.grey.shade100,
-                  foregroundColor: (isLive || secsUntil <= 300) ? Colors.white : Colors.grey.shade500,
+                  backgroundColor: isLive ? AppTheme.student : Colors.grey.shade100,
+                  foregroundColor: isLive ? Colors.white : Colors.grey.shade500,
                   elevation: 0,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ),
@@ -8014,10 +7615,13 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> {
                     ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                     : const Icon(Icons.videocam_rounded, size: 20),
                 label: Text(
-                  isJoining ? "Connecting..." : ((isLive || secsUntil <= 300) ? "Join Video Call" : "Starts soon"),
+                  isJoining
+                      ? "Connecting..."
+                      : (isLive ? "Join Broadcast" : "Starts in ${secsUntil > 3600 ? '${secsUntil ~/ 3600}h' : '${secsUntil ~/ 60}m'}"),
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
-                onPressed: (isJoining || !(isLive || secsUntil <= 300)) ? null : () => _joinSession(session),
+                // ✅ Disabled button if NOT live
+                onPressed: (isJoining || !isLive) ? null : () => _joinSession(session),
               ),
             ),
           ],
@@ -8034,19 +7638,11 @@ FILE: screens\student_session_screen.dart
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../services/mentor_service.dart';
-import 'student_schedule_screen.dart'; // ✅ Added import for the global schedule screen
-
-/// Navigate here from MentorListScreen when the student taps "Request Session"
-/// on a mentor in the MY MENTORS tab.
-///
-/// Required params:
-///   mentorProfileId — Mentor.id (the mentor TABLE primary key, a UUID)
-///   mentorUserId    — User.id of the mentor (used for avatar & chat)
-///   mentorName      — Display name
+import 'student_schedule_screen.dart';
 
 class StudentSessionScreen extends StatefulWidget {
-  final String mentorProfileId; // ← Mentor TABLE primary key
-  final String mentorUserId;    // ← User TABLE id (for avatar)
+  final String mentorProfileId; // Mentor TABLE primary key
+  final String mentorUserId;    // User TABLE id (for avatar)
   final String mentorName;
 
   const StudentSessionScreen({
@@ -8062,79 +7658,45 @@ class StudentSessionScreen extends StatefulWidget {
 
 class _StudentSessionScreenState extends State<StudentSessionScreen> {
   final MentorService _service = MentorService();
+  final TextEditingController _messageController = TextEditingController();
 
-  List<dynamic> _slots          = [];
-  bool          _isLoadingSlots = true;
-
-  String? _requestingSlotId;
+  bool _isRequesting = false;
 
   @override
-  void initState() {
-    super.initState();
-    debugPrint(
-        "🚀 StudentSessionScreen: mentorProfileId=${widget.mentorProfileId}, "
-            "mentorUserId=${widget.mentorUserId}");
-    _loadAll();
+  void dispose() {
+    _messageController.dispose();
+    super.dispose();
   }
 
-  Future<void> _loadAll() async {
-    await _fetchSlots();
-  }
+  // ── Send Connection Request ────────────────────────────────────────────────
 
-  // ── Fetch available slots for THIS mentor ──────────────────────────────────
+  Future<void> _sendRequest() async {
+    setState(() => _isRequesting = true);
 
-  Future<void> _fetchSlots() async {
-    if (!mounted) return;
-    setState(() => _isLoadingSlots = true);
-
-    // ✅ Pass mentor PROFILE id (Mentor.id), NOT user_id
-    final data = await _service.getMentorAvailability(widget.mentorProfileId);
-
-    if (mounted) {
-      setState(() {
-        _slots          = data;
-        _isLoadingSlots = false;
-      });
-    }
-  }
-
-  // ── Book a slot ────────────────────────────────────────────────────────────
-
-  Future<void> _requestSlot(Map<String, dynamic> slot) async {
-    final String slotId = slot['id']?.toString() ?? '';
-    if (slotId.isEmpty) return;
-
-    setState(() => _requestingSlotId = slotId);
-
-    // ✅ mentorId = Mentor.id (profile UUID), availabilityId = slot UUID
-    final success = await _service.requestSession(
-      mentorId:       widget.mentorProfileId,
-      availabilityId: slotId,
-      message:        "I would like to book this session.",
+    final success = await _service.sendConnectionRequest(
+      widget.mentorProfileId,
+      _messageController.text.trim(),
     );
 
-    if (mounted) setState(() => _requestingSlotId = null);
+    if (mounted) setState(() => _isRequesting = false);
 
     if (success && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content:         Text("✅ Request sent! Waiting for mentor approval."),
+          content: Text("✅ Connection request sent to mentor!"),
           backgroundColor: Colors.green,
         ),
       );
-      _fetchSlots(); // slot disappears (now in pending state)
+      Navigator.pop(context); // Go back after success
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-              "Could not send request. Slot may be taken or already requested."),
+          content: Text("Failed to send request. You may have already requested this mentor."),
           backgroundColor: Colors.redAccent,
         ),
       );
     }
   }
-
-  // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -8144,203 +7706,134 @@ class _StudentSessionScreenState extends State<StudentSessionScreen> {
         backgroundColor: Colors.white,
         elevation: 0.5,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded,
-              color: Colors.black, size: 20),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
         title: Row(
           children: [
             CircleAvatar(
               radius: 18,
-              backgroundImage: NetworkImage(
-                  'https://i.pravatar.cc/150?u=${widget.mentorUserId}'),
+              backgroundImage: NetworkImage('https://i.pravatar.cc/150?u=${widget.mentorUserId}'),
             ),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(widget.mentorName,
-                      style: const TextStyle(
-                          color:       Colors.black,
-                          fontWeight:  FontWeight.bold,
-                          fontSize:    16)),
-                  const Text("Book a session",
-                      style: TextStyle(color: Colors.grey, fontSize: 11)),
+                  Text(
+                    widget.mentorName,
+                    style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  const Text("Connect", style: TextStyle(color: Colors.grey, fontSize: 11)),
                 ],
               ),
             ),
           ],
         ),
         actions: [
-          // ✅ NEW: Button to view the student's global schedule
           IconButton(
             icon: const Icon(Icons.calendar_month_rounded, color: AppTheme.student),
             tooltip: "My Schedule",
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (context) => const StudentScheduleScreen(),
-                ),
+                MaterialPageRoute(builder: (context) => const StudentScheduleScreen()),
               );
             },
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: AppTheme.student),
-            onPressed: _loadAll,
           ),
           const SizedBox(width: 8),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: _loadAll,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildSectionHeader(
-                  "Available Time Slots", Icons.calendar_month),
-              const SizedBox(height: 4),
-              const Text(
-                "Tap Book to send a session request to the mentor.",
-                style: TextStyle(color: Colors.grey, fontSize: 12),
-              ),
-              const SizedBox(height: 12),
-              _buildSlotsSection(),
-              const SizedBox(height: 80),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ── Section header ─────────────────────────────────────────────────────────
-
-  Widget _buildSectionHeader(String title, IconData icon) {
-    return Row(
-      children: [
-        Icon(icon, color: AppTheme.student, size: 20),
-        const SizedBox(width: 8),
-        Text(title,
-            style: const TextStyle(
-                fontSize:   16,
-                fontWeight: FontWeight.bold,
-                color:      Color(0xFF1A2138))),
-      ],
-    );
-  }
-
-  // ── Available slots ────────────────────────────────────────────────────────
-
-  Widget _buildSlotsSection() {
-    if (_isLoadingSlots) {
-      return const Center(
-          child: Padding(
-            padding: EdgeInsets.all(24),
-            child: CircularProgressIndicator(color: AppTheme.student),
-          ));
-    }
-    if (_slots.isEmpty) {
-      return Container(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-            color:        Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border:       Border.all(color: Colors.grey.shade100)),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Icon(Icons.calendar_today_outlined,
-                size: 48, color: Colors.grey.shade300),
+            const SizedBox(height: 20),
+
+            // Header Icon
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: AppTheme.student.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.wifi_tethering_rounded, size: 64, color: AppTheme.student),
+            ),
+            const SizedBox(height: 24),
+
+            // Title
+            Text(
+              "Join ${widget.mentorName}'s Network",
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Color(0xFF1A2138)),
+            ),
             const SizedBox(height: 12),
-            const Text("No available slots right now.",
-                style: TextStyle(
-                    color:      Colors.grey,
-                    fontSize:   14,
-                    fontWeight: FontWeight.w600)),
-            const SizedBox(height: 4),
-            const Text("Check back later or message your mentor.",
-                style: TextStyle(color: Colors.grey, fontSize: 12)),
+
+            // Explanation Text
+            const Text(
+              "Connect with this mentor to unlock access to their live mentorship broadcasts. Once connected, their sessions will appear directly in your schedule!",
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey, fontSize: 14, height: 1.5),
+            ),
+            const SizedBox(height: 40),
+
+            // Message Input Field
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                "Send an introductory message (Optional)",
+                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey, fontSize: 13),
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _messageController,
+              maxLines: 3,
+              decoration: InputDecoration(
+                hintText: "Hi! I would love to connect and learn from your upcoming live sessions.",
+                hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(color: Colors.grey.shade200),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(color: Colors.grey.shade200),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(color: AppTheme.student, width: 2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 40),
+
+            // Submit Button
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton(
+                onPressed: _isRequesting ? null : _sendRequest,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.student,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  elevation: 0,
+                ),
+                child: _isRequesting
+                    ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : const Text(
+                  "Send Connection Request",
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+              ),
+            ),
           ],
         ),
-      );
-    }
-    return Column(
-        children:
-        _slots.map<Widget>((s) => _buildSlotCard(s)).toList());
-  }
-
-  Widget _buildSlotCard(Map<String, dynamic> slot) {
-    const List<String> days = [
-      '', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'
-    ];
-    final int    dayIdx      = (slot['day_of_week'] as int?)?.clamp(1, 7) ?? 1;
-    final String rawStart    = slot['start_time']?.toString() ?? '00:00:00';
-    final String rawEnd      = slot['end_time']?.toString() ?? '00:00:00';
-    final String start       = rawStart.length >= 5 ? rawStart.substring(0, 5) : rawStart;
-    final String end         = rawEnd.length   >= 5 ? rawEnd.substring(0, 5)   : rawEnd;
-    final String slotId      = slot['id']?.toString() ?? '';
-    final bool   isProcessing = _requestingSlotId == slotId;
-
-    return Card(
-      margin:     const EdgeInsets.only(bottom: 12),
-      elevation:  0,
-      color:      Colors.white,
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(15),
-          side: BorderSide(
-              color: AppTheme.student.withValues(alpha: 0.15))),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: AppTheme.student.withValues(alpha: 0.1),
-          child: Text(days[dayIdx],
-              style: const TextStyle(
-                  color:      AppTheme.student,
-                  fontSize:   11,
-                  fontWeight: FontWeight.bold)),
-        ),
-        title: Text("$start – $end",
-            style: const TextStyle(
-                fontWeight: FontWeight.bold, fontSize: 15)),
-        subtitle: Text(_fullDayName(dayIdx),
-            style: const TextStyle(color: Colors.grey, fontSize: 12)),
-        trailing: ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: isProcessing
-                ? Colors.grey.shade300
-                : AppTheme.student,
-            foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10)),
-            padding: const EdgeInsets.symmetric(
-                horizontal: 16, vertical: 10),
-            elevation: 0,
-          ),
-          onPressed: isProcessing || slotId.isEmpty
-              ? null
-              : () => _requestSlot(slot),
-          child: isProcessing
-              ? const SizedBox(
-              width:  15,
-              height: 15,
-              child:  CircularProgressIndicator(
-                  color: Colors.white, strokeWidth: 2))
-              : const Text("Book",
-              style: TextStyle(fontWeight: FontWeight.bold)),
-        ),
       ),
     );
-  }
-
-  String _fullDayName(int dayIdx) {
-    const names = [
-      '', 'Monday', 'Tuesday', 'Wednesday',
-      'Thursday', 'Friday', 'Saturday', 'Sunday'
-    ];
-    return (dayIdx >= 1 && dayIdx <= 7) ? names[dayIdx] : '';
   }
 }
 
@@ -9059,9 +8552,10 @@ FILE: screens\video_call_screen.dart
 ================================================================================
 
 import 'package:flutter/material.dart';
-import 'package:dyte_uikit/dyte_uikit.dart';
+import 'package:realtimekit_ui/realtimekit_ui.dart';
+import 'package:permission_handler/permission_handler.dart';
 
-class VideoCallScreen extends StatelessWidget {
+class VideoCallScreen extends StatefulWidget {
   final String token;
 
   const VideoCallScreen({
@@ -9070,23 +8564,157 @@ class VideoCallScreen extends StatelessWidget {
   });
 
   @override
+  State<VideoCallScreen> createState() => _VideoCallScreenState();
+}
+
+class _VideoCallScreenState extends State<VideoCallScreen> {
+  bool _isCheckingPermissions = true;
+  bool _hasPermissions = false;
+
+  // ✅ NEW: Keep track of whether we are in the call
+  bool _isInCall = false;
+  Widget? _rtkWidget;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkPermissions();
+  }
+
+  Future<void> _checkPermissions() async {
+    final statuses = await [
+      Permission.camera,
+      Permission.microphone,
+      Permission.bluetoothConnect,
+    ].request();
+
+    if (mounted) {
+      setState(() {
+        _hasPermissions = statuses[Permission.camera] == PermissionStatus.granted &&
+            statuses[Permission.microphone] == PermissionStatus.granted;
+        _isCheckingPermissions = false;
+      });
+    }
+  }
+
+  void _joinMeeting() {
+    try {
+      final meetingInfo = RtkMeetingInfo(authToken: widget.token);
+      final uiKitInfo = RealtimeKitUIInfo(meetingInfo);
+
+      setState(() {
+        // ✅ FIX: Build the widget and switch the UI state, DO NOT pushReplacement!
+        _rtkWidget = RealtimeKitUIBuilder.build(uiKitInfo: uiKitInfo);
+        _isInCall = true;
+      });
+
+    } catch (e) {
+      debugPrint("Failed to load RealtimeKit UI: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Failed to initialize the video session.")),
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // 1. Create the meeting info with your backend token
-    final meetingInfo = DyteMeetingInfoV2(authToken: token);
+    // STATE 1: Actually inside the Video Call
+    // If the user clicked "Enter Session", we just show the video widget!
+    if (_isInCall && _rtkWidget != null) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: SafeArea(
+          child: _rtkWidget!,
+        ),
+      );
+    }
 
-    // 2. Initialize the UI Kit Info
-    final uiKitInfo = DyteUIKitInfo(meetingInfo);
+    // STATE 2: Loading Permissions
+    if (_isCheckingPermissions) {
+      return const Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: Colors.blueAccent),
+              SizedBox(height: 24),
+              Text("Securing connection...", style: TextStyle(color: Colors.white70)),
+            ],
+          ),
+        ),
+      );
+    }
 
-    // 3. Build the actual Video Call Widget
-    final dyteWidget = DyteUIKitBuilder.build(
-      uiKitInfo: uiKitInfo,
-    );
+    // STATE 3: Permissions Denied
+    if (!_hasPermissions) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.videocam_off_rounded, color: Colors.orangeAccent, size: 64),
+                const SizedBox(height: 16),
+                const Text(
+                  "Camera and Microphone access are required.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white, fontSize: 16),
+                ),
+                const SizedBox(height: 32),
+                ElevatedButton(
+                  onPressed: openAppSettings,
+                  child: const Text("Open Settings"),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("Go Back", style: TextStyle(color: Colors.white54)),
+                )
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
+    // STATE 4: Ready to Join
     return Scaffold(
-      backgroundColor: Colors.black, // Sleek black background
-      body: SafeArea(
-        // This widget automatically handles the camera, mic, grid, and End Call button
-        child: dyteWidget,
+      backgroundColor: Colors.black,
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.check_circle_outline, color: Colors.green, size: 64),
+            const SizedBox(height: 16),
+            const Text(
+              "Hardware successfully prepared.",
+              style: TextStyle(color: Colors.white, fontSize: 18),
+            ),
+            const SizedBox(height: 32),
+            SizedBox(
+              width: 200,
+              height: 50,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blueAccent,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: _joinMeeting,
+                child: const Text(
+                  "Enter Session",
+                  style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancel", style: TextStyle(color: Colors.white54)),
+            )
+          ],
+        ),
       ),
     );
   }
@@ -9904,10 +9532,7 @@ class MentorService {
   Future<Map<String, dynamic>> getMyProfile() async {
     final url = Uri.parse('$baseUrl/api/v1/profiles/mentors/me');
     try {
-      final response = await http
-          .get(url, headers: await _getHeaders())
-          .timeout(const Duration(seconds: 15));
-
+      final response = await http.get(url, headers: await _getHeaders()).timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) return json.decode(response.body);
       throw Exception("Profile not found: ${response.statusCode}");
     } on SocketException {
@@ -9921,216 +9546,146 @@ class MentorService {
   Future<bool> updateProfile(Map<String, dynamic> profileData) async {
     final url = Uri.parse('$baseUrl/api/v1/profiles/mentors/');
     try {
-      final response = await http
-          .post(url,
-          headers: await _getHeaders(), body: json.encode(profileData))
-          .timeout(const Duration(seconds: 15));
+      final response = await http.post(url, headers: await _getHeaders(), body: json.encode(profileData)).timeout(const Duration(seconds: 15));
       return response.statusCode == 201 || response.statusCode == 200;
     } catch (e) {
-      debugPrint("❌ updateProfile Error: $e");
       return false;
     }
   }
 
-  // ── Availability ──────────────────────────────────────────────────────────
+  // ── Broadcast Sessions (NEW ARCHITECTURE) ────────────────────────────────
 
-  /// POST /api/v1/availability/
-  /// slots: [{ day_of_week: 1-7, start_time: "HH:MM:SS", end_time: "HH:MM:SS" }]
-  Future<bool> setAvailability(List<Map<String, dynamic>> slots) async {
-    final url = Uri.parse('$baseUrl/api/v1/availability/');
+  Future<Map<String, dynamic>?> broadcastSession(String topic, int delayMinutes) async {
+    final url = Uri.parse('$baseUrl/api/v1/sessions/broadcast');
     try {
-      final response = await http
-          .post(url,
-          headers: await _getHeaders(),
-          body: json.encode({"slots": slots}))
-          .timeout(const Duration(seconds: 15));
-
-      debugPrint(
-          "📥 setAvailability ${response.statusCode}: ${response.body}");
-      return response.statusCode == 200 || response.statusCode == 201;
-    } catch (e) {
-      debugPrint("❌ setAvailability Error: $e");
-      return false;
-    }
-  }
-
-  /// GET /api/v1/availability/{mentor_id}
-  ///
-  /// IMPORTANT: mentor_id here is the Mentor TABLE primary key (Mentor.id),
-  /// NOT the user's UUID. Pass "me" to fetch the logged-in mentor's own slots.
-  Future<List<dynamic>> getMentorAvailability(String mentorProfileId) async {
-    try {
-      if (mentorProfileId.isEmpty || mentorProfileId == "null") {
-        debugPrint("⚠️ getMentorAvailability: empty/null id — aborting");
-        return [];
-      }
-
-      String idToQuery = mentorProfileId;
-
-      // Special case: when the mentor views their OWN schedule screen
-      if (mentorProfileId == "me") {
-        final profile = await getMyProfile();
-        idToQuery = profile['id']?.toString() ?? '';
-        if (idToQuery.isEmpty) {
-          debugPrint("❌ getMentorAvailability: could not resolve 'me' profile id");
-          return [];
-        }
-      }
-
-      final url = Uri.parse('$baseUrl/api/v1/availability/$idToQuery');
-      debugPrint("📡 GET $url");
-
-      final response = await http
-          .get(url, headers: await _getHeaders())
-          .timeout(const Duration(seconds: 15));
-
-      if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        debugPrint("✅ getMentorAvailability: ${data.length} slots");
-        return data;
-      } else {
-        debugPrint(
-            "❌ getMentorAvailability ${response.statusCode}: ${response.body}");
-        return [];
-      }
-    } catch (e) {
-      debugPrint("❌ getMentorAvailability exception: $e");
-      return [];
-    }
-  }
-
-  // ── Session Requests ──────────────────────────────────────────────────────
-
-  /// GET /api/v1/requests/pending/
-  /// Mentor-only. Returns pending SESSION requests (not connection requests).
-  Future<List<dynamic>> getPendingSessionRequests() async {
-    final url = Uri.parse('$baseUrl/api/v1/requests/pending/');
-    try {
-      final response = await http
-          .get(url, headers: await _getHeaders())
-          .timeout(const Duration(seconds: 10));
-
-      if (response.statusCode == 200) return json.decode(response.body);
-      debugPrint(
-          "❌ getPendingSessionRequests ${response.statusCode}: ${response.body}");
-      return [];
-    } catch (e) {
-      debugPrint("❌ getPendingSessionRequests Error: $e");
-      return [];
-    }
-  }
-
-  /// POST /api/v1/requests/create
-  /// mentorId must be the Mentor TABLE primary key (Mentor.id), NOT user_id.
-  /// availabilityId is the MentorAvailability UUID.
-  Future<bool> requestSession({
-    required String mentorId,
-    required String availabilityId,
-    String message = "",
-  }) async {
-    final url = Uri.parse('$baseUrl/api/v1/requests/create');
-    debugPrint(
-        "📡 requestSession mentor_id=$mentorId, slot_id=$availabilityId");
-    try {
-      final response = await http
-          .post(url,
-          headers: await _getHeaders(),
-          body: json.encode({
-            "mentor_id":       mentorId,
-            "availability_id": availabilityId,
-            "message":         message,
-          }))
-          .timeout(const Duration(seconds: 15));
-
-      debugPrint("📥 requestSession ${response.statusCode}: ${response.body}");
-      return response.statusCode == 201 || response.statusCode == 200;
-    } catch (e) {
-      debugPrint("❌ requestSession Error: $e");
-      return false;
-    }
-  }
-
-  /// POST /api/v1/requests/{request_id}/approve
-  /// Mentor approves a session request → creates SessionLog + Dyte meeting.
-  Future<Map<String, dynamic>?> approveSessionRequest(
-      String requestId) async {
-    final url =
-    Uri.parse('$baseUrl/api/v1/requests/$requestId/approve');
-    try {
-      final response = await http
-          .post(url, headers: await _getHeaders())
-          .timeout(const Duration(seconds: 15));
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        return json.decode(response.body);
-      }
-      debugPrint(
-          "❌ approveSessionRequest ${response.statusCode}: ${response.body}");
-      return null;
-    } catch (e) {
-      debugPrint("❌ approveSessionRequest Error: $e");
-      return null;
-    }
-  }
-
-  // ── Sessions ──────────────────────────────────────────────────────────────
-
-  /// GET /api/v1/sessions/upcoming
-  /// Works for both mentor and student (backend auto-detects role).
-  Future<List<dynamic>> getUpcomingSessions() async {
-    final url = Uri.parse('$baseUrl/api/v1/sessions/upcoming');
-    try {
-      final response = await http
-          .get(url, headers: await _getHeaders())
-          .timeout(const Duration(seconds: 15));
-
-      if (response.statusCode == 200) return json.decode(response.body);
-      return [];
-    } catch (e) {
-      debugPrint("❌ getUpcomingSessions Error: $e");
-      return [];
-    }
-  }
-
-  /// POST /api/v1/sessions/{session_id}/join-video
-  /// Returns { token: <dyte_participant_token>, meeting_id }
-  Future<Map<String, dynamic>?> joinVideoSession(String sessionId) async {
-    final url =
-    Uri.parse('$baseUrl/api/v1/sessions/$sessionId/join-video');
-    try {
-      final response = await http
-          .post(url, headers: await _getHeaders())
-          .timeout(const Duration(seconds: 20));
-
-      if (response.statusCode == 200) return json.decode(response.body);
-      debugPrint(
-          "❌ joinVideoSession ${response.statusCode}: ${response.body}");
-      return null;
-    } catch (e) {
-      debugPrint("❌ joinVideoSession Error: $e");
-      return null;
-    }
-  }
-
-  /// POST /api/v1/sessions/{session_id}/end
-  /// Marks the session as completed in the backend after the video call ends.
-  Future<bool> endVideoSession(String sessionId) async {
-    final url = Uri.parse('$baseUrl/api/v1/sessions/$sessionId/end');
-    try {
-      // ✅ Correctly using the existing _getHeaders() method
       final response = await http.post(
         url,
         headers: await _getHeaders(),
+        body: json.encode({"topic": topic, "delay_minutes": delayMinutes}),
       ).timeout(const Duration(seconds: 15));
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        debugPrint("✅ Session $sessionId successfully ended in backend.");
-        return true;
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        return json.decode(response.body);
       }
-      debugPrint("❌ endVideoSession ${response.statusCode}: ${response.body}");
-      return false;
+      debugPrint("❌ broadcastSession Error: ${response.body}");
+      return null;
     } catch (e) {
-      debugPrint("❌ Error ending session: $e");
+      debugPrint("❌ broadcastSession Exception: $e");
+      return null;
+    }
+  }
+
+  // ── Delete Broadcast ──────────────────────────────────────────────────────
+  Future<bool> deleteBroadcast(String sessionId) async {
+    final url = Uri.parse('$baseUrl/api/v1/sessions/$sessionId');
+    try {
+      final response = await http.delete(url, headers: await _getHeaders()).timeout(const Duration(seconds: 10));
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint("❌ deleteBroadcast Error: $e");
+      return false;
+    }
+  }
+
+  // ── Connection Requests (NEW ARCHITECTURE) ───────────────────────────────
+
+  // Used by STUDENTS to send a request to a Mentor
+  Future<bool> sendConnectionRequest(String mentorId, String message) async {
+    final url = Uri.parse('$baseUrl/api/v1/connections/request');
+    try {
+      final response = await http.post(
+        url,
+        headers: await _getHeaders(),
+        body: json.encode({
+          "mentor_id": mentorId,
+          "message": message.isEmpty ? "I would like to connect and join your sessions!" : message,
+        }),
+      ).timeout(const Duration(seconds: 15));
+
+      return response.statusCode == 201 || response.statusCode == 200;
+    } catch (e) {
+      debugPrint("❌ sendConnectionRequest Error: $e");
+      return false;
+    }
+  }
+
+  // Used by MENTORS to view their pending requests
+  Future<List<dynamic>> getPendingConnectionRequests() async {
+    final url = Uri.parse('$baseUrl/api/v1/mentors/requests/pending');
+    try {
+      final response = await http.get(url, headers: await _getHeaders()).timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) return json.decode(response.body);
+      return [];
+    } catch (e) {
+      debugPrint("❌ getPendingConnectionRequests Error: $e");
+      return [];
+    }
+  }
+
+  // Used by MENTORS to accept a student's request
+  Future<bool> acceptConnectionRequest(String requestId) async {
+    final url = Uri.parse('$baseUrl/api/v1/connections/$requestId/accept');
+    try {
+      final response = await http.patch(url, headers: await _getHeaders()).timeout(const Duration(seconds: 10));
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Used by MENTORS to reject a student's request
+  Future<bool> rejectConnectionRequest(String requestId) async {
+    final url = Uri.parse('$baseUrl/api/v1/connections/$requestId/reject');
+    try {
+      final response = await http.patch(url, headers: await _getHeaders()).timeout(const Duration(seconds: 10));
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // ── Video Sessions ────────────────────────────────────────────────────────
+
+  Future<List<dynamic>> getUpcomingSessions() async {
+    final url = Uri.parse('$baseUrl/api/v1/sessions/upcoming');
+    debugPrint("📡 Fetching Broadcasts from: $url");
+
+    try {
+      final headers = await _getHeaders();
+      final response = await http.get(url, headers: headers).timeout(const Duration(seconds: 15));
+
+      debugPrint("📥 UpcomingSessions Status Code: ${response.statusCode}");
+      debugPrint("📥 UpcomingSessions Body: ${response.body}");
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        debugPrint("❌ SERVER ERROR: Server refused to send sessions.");
+        return [];
+      }
+    } catch (e) {
+      debugPrint("❌ APP CRASH/EXCEPTION in getUpcomingSessions: $e");
+      return [];
+    }
+  }
+
+  Future<Map<String, dynamic>?> joinVideoSession(String sessionId) async {
+    final url = Uri.parse('$baseUrl/api/v1/sessions/$sessionId/join-video');
+    try {
+      final response = await http.post(url, headers: await _getHeaders()).timeout(const Duration(seconds: 20));
+      if (response.statusCode == 200) return json.decode(response.body);
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  Future<bool> endVideoSession(String sessionId) async {
+    final url = Uri.parse('$baseUrl/api/v1/sessions/$sessionId/end');
+    try {
+      final response = await http.post(url, headers: await _getHeaders()).timeout(const Duration(seconds: 15));
+      return response.statusCode == 200 || response.statusCode == 201;
+    } catch (e) {
       return false;
     }
   }

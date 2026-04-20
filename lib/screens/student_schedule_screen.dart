@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../services/mentor_service.dart';
-import 'video_call_screen.dart'; // ✅ Added import for the VC screen
+import 'video_call_screen.dart';
 
 class StudentScheduleScreen extends StatefulWidget {
   const StudentScheduleScreen({super.key});
@@ -45,7 +45,7 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> {
     if (result != null && mounted) {
       final String dyteToken = result['token'] ?? '';
 
-      // ✅ AWAIT the video call screen. The code pauses here while they chat.
+      // AWAIT the video call screen.
       await Navigator.push(
         context,
         MaterialPageRoute(
@@ -53,10 +53,7 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> {
         ),
       );
 
-      // ✅ Once they tap 'Leave Call' and the screen closes, hit the backend!
-      await _service.endVideoSession(sessionId);
-
-      // ✅ Automatically refresh the UI to show the session is complete
+      // Refresh the UI to show the session is complete/updated
       _fetchMySessions();
 
     } else if (mounted) {
@@ -81,7 +78,7 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> {
           icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text("My Schedule",
+        title: const Text("My Broadcasts",
             style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900)),
         actions: [
           IconButton(
@@ -115,15 +112,15 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.event_busy_rounded, size: 80, color: Colors.grey.shade300),
+              Icon(Icons.sensors_off_rounded, size: 80, color: Colors.grey.shade300),
               const SizedBox(height: 16),
               const Text(
-                "No upcoming sessions",
+                "No upcoming broadcasts",
                 style: TextStyle(color: Colors.grey, fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               const Text(
-                "Book a slot with a mentor to see it here.",
+                "Connect with more mentors to see their sessions here.",
                 style: TextStyle(color: Colors.grey, fontSize: 14),
               ),
             ],
@@ -134,6 +131,7 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> {
   }
 
   Widget _buildSessionCard(Map<String, dynamic> session) {
+    // ✅ Logic perfectly aligned: They can only join if it is actually LIVE
     final bool isLive = session['is_live'] == true;
     final int secsUntil = session['seconds_until_start'] ?? 999999;
     final String name = session['other_party_name'] ?? 'Mentor';
@@ -174,7 +172,7 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> {
               children: [
                 CircleAvatar(
                   backgroundColor: isLive ? AppTheme.student : AppTheme.student.withValues(alpha: 0.1),
-                  child: Icon(Icons.video_camera_front_rounded, color: isLive ? Colors.white : AppTheme.student),
+                  child: Icon(Icons.sensors_rounded, color: isLive ? Colors.white : AppTheme.student),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -210,8 +208,8 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> {
               height: 48,
               child: ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: (isLive || secsUntil <= 300) ? AppTheme.student : Colors.grey.shade100,
-                  foregroundColor: (isLive || secsUntil <= 300) ? Colors.white : Colors.grey.shade500,
+                  backgroundColor: isLive ? AppTheme.student : Colors.grey.shade100,
+                  foregroundColor: isLive ? Colors.white : Colors.grey.shade500,
                   elevation: 0,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ),
@@ -219,10 +217,13 @@ class _StudentScheduleScreenState extends State<StudentScheduleScreen> {
                     ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                     : const Icon(Icons.videocam_rounded, size: 20),
                 label: Text(
-                  isJoining ? "Connecting..." : ((isLive || secsUntil <= 300) ? "Join Video Call" : "Starts soon"),
+                  isJoining
+                      ? "Connecting..."
+                      : (isLive ? "Join Broadcast" : "Starts in ${secsUntil > 3600 ? '${secsUntil ~/ 3600}h' : '${secsUntil ~/ 60}m'}"),
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
-                onPressed: (isJoining || !(isLive || secsUntil <= 300)) ? null : () => _joinSession(session),
+                // ✅ Disabled button if NOT live
+                onPressed: (isJoining || !isLive) ? null : () => _joinSession(session),
               ),
             ),
           ],
